@@ -39,13 +39,6 @@ const WORKOUT_TYPES = {
 
 // ─────────────────────────────────────────────────────────────
 // MENSTRUAL CYCLE PHASES
-// Female-only, opt-in via athlete.cycleTracking.
-//
-// intensityMod  → working weight multiplier (fed to AI later)
-// avoidTypes    → workout types to swap out this phase
-// recommendedTypes → preferred replacements
-// workoutTip    → shown in modal + AI prompt context
-// nutritionTip  → shown in modal + AI prompt context
 // ─────────────────────────────────────────────────────────────
 
 export const CYCLE_PHASES = {
@@ -108,17 +101,13 @@ export const CYCLE_PHASES = {
 
 // ─────────────────────────────────────────────────────────────
 // CYCLE INFERENCE
-// Groups logged period days into runs (gap ≤ 2 days = same
-// period).  Returns a Date that is the FIRST day of the most
-// recent run — this is the cycle anchor (day 1 of cycle).
 // ─────────────────────────────────────────────────────────────
 
 export function inferCycleAnchor(periodDays = []) {
   if (!periodDays || periodDays.length === 0) return null;
 
-  const sorted = [...periodDays].sort(); // ascending date strings
+  const sorted = [...periodDays].sort();
 
-  // Group into runs
   const runs = [];
   let run = [sorted[0]];
   for (let i = 1; i < sorted.length; i++) {
@@ -134,12 +123,10 @@ export function inferCycleAnchor(periodDays = []) {
   }
   runs.push(run);
 
-  // Anchor = first day of the most recent run
   const lastRun = runs[runs.length - 1];
   return fromKey(lastRun[0]);
 }
 
-// Returns { key, phase, cycleDay } or null
 export function getCyclePhase(date, anchor, cycleLen = 28) {
   if (!anchor) return null;
   const d = new Date(date); d.setHours(0,0,0,0);
@@ -154,7 +141,7 @@ export function getCyclePhase(date, anchor, cycleLen = 28) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// ACCESSORIES  (keyed by equipment value from profile)
+// ACCESSORIES
 // ─────────────────────────────────────────────────────────────
 
 const ACCESSORIES = {
@@ -219,7 +206,6 @@ function getGoalConfig(goal) {
   return c[goal] || c.general;
 }
 
-// AI will override these later — they are the deterministic fallback
 const BASE_PATTERNS = {
   strength: [
     { lift:'Back Squat',  type:'strength',    baseKey:'squat'    },
@@ -274,7 +260,7 @@ BASE_PATTERNS.general     = BASE_PATTERNS.strength;
 BASE_PATTERNS.performance = BASE_PATTERNS.hypertrophy;
 
 // ─────────────────────────────────────────────────────────────
-// CALORIC DELTA  (derived from active bulk/cut block)
+// CALORIC DELTA
 // ─────────────────────────────────────────────────────────────
 
 function getCaloricDelta(bulkCutBlock, isRest) {
@@ -288,11 +274,6 @@ function getCaloricDelta(bulkCutBlock, isRest) {
 
 // ─────────────────────────────────────────────────────────────
 // SCHEDULE BUILDER
-//
-// Deterministic 14-day schedule.
-// When AI rebuilding is added, the AI output patches the
-// `lift`, `type`, and `reason` fields while cycle + nutrition
-// context stays computed here and is passed into the AI prompt.
 // ─────────────────────────────────────────────────────────────
 
 export function buildSchedule(athlete, nutrition = {}) {
@@ -303,7 +284,6 @@ export function buildSchedule(athlete, nutrition = {}) {
   const isFemale = athlete?.gender === 'female';
   const useCycle = isFemale && athlete?.cycleTracking === true;
 
-  // Safely read from NutritionPage state
   const periodDays    = Array.isArray(nutrition?.periodDays)    ? nutrition.periodDays    : [];
   const bulkCutBlocks = Array.isArray(nutrition?.bulkCutBlocks) ? nutrition.bulkCutBlocks : [];
 
@@ -321,16 +301,13 @@ export function buildSchedule(athlete, nutrition = {}) {
     const dateKey = toKey(date);
     const p       = { ...pattern[i % pattern.length] };
 
-    // 1. Cycle phase
     const cycleInfo = (useCycle && cycleAnchor)
       ? getCyclePhase(date, cycleAnchor)
       : null;
 
-    // 2. Bulk/cut block
     const bulkCutBlock = getActiveBulkCut(date);
     const caloricDelta = getCaloricDelta(bulkCutBlock, !!p.rest);
 
-    // 3. Swap workout type if cycle phase recommends it
     if (cycleInfo && !p.rest) {
       const ph = cycleInfo.phase;
       if (ph.avoidTypes.includes(p.type) && ph.recommendedTypes.length) {
@@ -338,12 +315,10 @@ export function buildSchedule(athlete, nutrition = {}) {
       }
     }
 
-    // 4. Accessories from equipment
     const accessories = (!p.rest && p.baseKey)
       ? getAccessories(p.baseKey, athlete?.equipment).map(a => ({ ...a, done: false }))
       : [];
 
-    // 5. Reason text (AI replaces this later)
     let reason = '';
     if (p.rest) {
       reason = 'CNS recovery day. Keep protein high and prioritise sleep. Light walking is fine.';
@@ -358,13 +333,10 @@ export function buildSchedule(athlete, nutrition = {}) {
       reason = `${typeLabel} — ${goalConfig.note}.${cyclePart}${injuryPart}`;
     }
 
-    // 6. Nutrition note
-    // Priority: cycle phase > bulk/cut block > no-data fallback
     let nutr = '';
     if (p.rest) {
       nutr = `Recovery day — protein ≥1g/lb bodyweight.${caloricDelta ? ` Caloric target: ${caloricDelta}.` : ''} Hydration priority.`;
     } else if (cycleInfo && bulkCutBlock) {
-      // Both active — show both
       nutr = `${cycleInfo.phase.nutritionTip}  |  ${bulkCutBlock.type} phase: ${caloricDelta}.`;
     } else if (cycleInfo) {
       nutr = cycleInfo.phase.nutritionTip;
@@ -379,7 +351,6 @@ export function buildSchedule(athlete, nutrition = {}) {
     }
 
     days.push({
-      // Identity
       dateKey, date,
       dayNum:   date.getDate(),
       month:    date.getMonth(),
@@ -388,7 +359,6 @@ export function buildSchedule(athlete, nutrition = {}) {
       isToday:  i === 0,
       dayLabel: `${DAY_SHORT[date.getDay()]} ${MONTH_NAMES[date.getMonth()]} ${date.getDate()}`,
 
-      // Workout (AI patches these later)
       lift:        p.lift     || null,
       type:        p.type     || null,
       baseKey:     p.baseKey  || null,
@@ -397,11 +367,9 @@ export function buildSchedule(athlete, nutrition = {}) {
       reason,
       nutr,
 
-      // Nutrition context — from NutritionPage
       bulkCutBlock,
       caloricDelta,
 
-      // Cycle context — from NutritionPage period log
       cycleInfo,
       cycleOptIn:   useCycle,
       hasCycleData: useCycle && cycleAnchor !== null,
@@ -413,8 +381,6 @@ export function buildSchedule(athlete, nutrition = {}) {
 
 // ─────────────────────────────────────────────────────────────
 // AI CONTEXT BUILDER
-// Exported so ChatPage can import and include calendar context
-// when it calls the AI coach.
 // ─────────────────────────────────────────────────────────────
 
 export function buildCalendarAIContext(athlete, schedule, blockedDays, nutrition) {
@@ -537,16 +503,13 @@ function BulkCutPill({ bulkCutBlock, caloricDelta }) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// CONTEXT BANNERS  (top of calendar)
-// Surfaces today's bulk/cut phase and cycle phase clearly.
-// Prompts user to log data when opted in but nothing exists yet.
+// CONTEXT BANNERS
 // ─────────────────────────────────────────────────────────────
 
 function ContextBanners({ todayCycle, todayBlock, athlete, hasCycleData, useCycle }) {
   return (
     <div className="cal-context-banners">
 
-      {/* ── Bulk / cut active block ── */}
       {todayBlock ? (
         <div className={`cal-banner cal-banner-${todayBlock.type}`}>
           <div className="cal-banner-icon">
@@ -579,7 +542,6 @@ function ContextBanners({ todayCycle, todayBlock, athlete, hasCycleData, useCycl
         </div>
       )}
 
-      {/* ── Cycle phase — only when opted in AND data exists ── */}
       {useCycle && hasCycleData && todayCycle && (
         <div
           className="cal-banner cal-banner-cycle"
@@ -616,7 +578,6 @@ function ContextBanners({ todayCycle, todayBlock, athlete, hasCycleData, useCycl
         </div>
       )}
 
-      {/* ── Prompt to log period if opted in but no data ── */}
       {useCycle && !hasCycleData && (
         <div className="cal-banner cal-banner-setup">
           <div className="cal-banner-icon">💧</div>
@@ -629,7 +590,6 @@ function ContextBanners({ todayCycle, todayBlock, athlete, hasCycleData, useCycl
         </div>
       )}
 
-      {/* ── Injury / considerations ── */}
       {athlete?.considerations && (
         <div className="cal-banner cal-banner-warn">
           <div className="cal-banner-icon">⚠</div>
@@ -645,10 +605,10 @@ function ContextBanners({ todayCycle, todayBlock, athlete, hasCycleData, useCycl
 }
 
 // ─────────────────────────────────────────────────────────────
-// DAY MODAL
+// DAY MODAL  ← fix: athlete is now a named prop
 // ─────────────────────────────────────────────────────────────
 
-function DayModal({ day, onClose, onBlock, onStartLift, onToggleAcc, accDone }) {
+function DayModal({ day, athlete, onClose, onBlock, onStartLift, onToggleAcc, accDone }) {
   const wt        = day.type ? WORKOUT_TYPES[day.type] : null;
   const accs      = day.accessories || [];
   const dayAcc    = accDone[day.dateKey] || {};
@@ -675,14 +635,14 @@ function DayModal({ day, onClose, onBlock, onStartLift, onToggleAcc, accDone }) 
           <button className="cal-modal-close" onClick={onClose}>✕</button>
         </div>
 
-        {/* Badge row — workout type + cycle phase + bulk/cut */}
+        {/* Badge row */}
         <div className="cal-modal-badges">
           {wt && <WorkoutTypePill type={day.type} />}
           {day.cycleOptIn && <CyclePhasePill cycleInfo={day.cycleInfo} />}
           {!day.rest && <BulkCutPill bulkCutBlock={day.bulkCutBlock} caloricDelta={day.caloricDelta} />}
         </div>
 
-        {/* ── Cycle phase insight block ── */}
+        {/* Cycle phase insight */}
         {day.cycleOptIn && day.cycleInfo && (
           <div
             className="cal-modal-section cal-modal-section-cycle"
@@ -717,7 +677,7 @@ function DayModal({ day, onClose, onBlock, onStartLift, onToggleAcc, accDone }) 
           </div>
         )}
 
-        {/* ── Bulk / cut block detail ── */}
+        {/* Bulk / cut block detail */}
         {day.bulkCutBlock && (
           <div className={`cal-modal-section cal-modal-nutr-${day.bulkCutBlock.type}`}>
             <div className={`cal-modal-section-label cal-nutr-label-${day.bulkCutBlock.type}`}>
@@ -734,7 +694,7 @@ function DayModal({ day, onClose, onBlock, onStartLift, onToggleAcc, accDone }) 
           <p className="cal-modal-body">{day.reason}</p>
         </div>
 
-        {/* Nutrition fallback (no bulk/cut block and no cycle) */}
+        {/* Nutrition fallback */}
         {!day.bulkCutBlock && !day.cycleInfo && (
           <div className="cal-modal-section">
             <div className="cal-modal-section-label">Nutrition today</div>
@@ -824,7 +784,6 @@ function AIInsightPanel({ athlete, schedule, blockedDays, nutrition }) {
 
   const dotColors = ['var(--mint)', 'var(--blue)', 'var(--orange)'];
 
-  // Derive today's context for the chip strip
   const todayDay   = schedule[0];
   const blockType  = todayDay?.bulkCutBlock?.type;
   const cyclePhase = todayDay?.cycleInfo?.phase;
@@ -841,7 +800,6 @@ function AIInsightPanel({ athlete, schedule, blockedDays, nutrition }) {
         </button>
       </div>
 
-      {/* What data the AI has access to — transparent to user */}
       <div className="cal-ai-context-strip">
         {blockType && (
           <span className={`cal-ai-ctx-chip cal-ai-ctx-${blockType}`}>
@@ -947,7 +905,6 @@ function WeekStrip({ days, blocked, onDayClick, onBlockToggle, accDone }) {
         const dayAcc    = accDone[day.dateKey] || {};
         const doneAcc   = Object.values(dayAcc).filter(Boolean).length;
 
-        // Left stripe = cycle phase, right stripe = bulk/cut
         const cycleColor   = (day.cycleOptIn && day.cycleInfo) ? day.cycleInfo.phase.colorRaw : null;
         const bulkCutColor =
           day.bulkCutBlock?.type === 'bulk'     ? '#57f0c0' :
@@ -965,7 +922,6 @@ function WeekStrip({ days, blocked, onDayClick, onBlockToggle, accDone }) {
             ].filter(Boolean).join(' ')}
             onClick={() => !isBlocked && onDayClick(day)}
           >
-            {/* Block toggle */}
             <button
               className={`cal-block-btn ${isBlocked ? 'cal-block-btn-on' : ''}`}
               title={isBlocked ? 'Unblock day' : 'Block day'}
@@ -974,17 +930,14 @@ function WeekStrip({ days, blocked, onDayClick, onBlockToggle, accDone }) {
               {isBlocked ? '↩' : '×'}
             </button>
 
-            {/* Left stripe = cycle phase colour */}
             {cycleColor && !isBlocked && (
               <div className="cal-cycle-stripe" style={{ background: cycleColor }} />
             )}
 
-            {/* Right stripe = bulk/cut phase colour */}
             {bulkCutColor && !isBlocked && (
               <div className="cal-bulkcut-stripe" style={{ background: bulkCutColor }} />
             )}
 
-            {/* Day header */}
             <div className="cal-day-header">
               <span className="cal-day-short">{DAY_SHORT[day.weekday]}</span>
               <span className={`cal-day-num ${day.isToday ? 'cal-day-num-today' : ''}`}>
@@ -992,7 +945,6 @@ function WeekStrip({ days, blocked, onDayClick, onBlockToggle, accDone }) {
               </span>
             </div>
 
-            {/* Cycle phase label on card */}
             {!isBlocked && day.cycleOptIn && day.cycleInfo && (
               <div
                 className="cal-card-cycle-label"
@@ -1002,7 +954,6 @@ function WeekStrip({ days, blocked, onDayClick, onBlockToggle, accDone }) {
               </div>
             )}
 
-            {/* Main content */}
             {isBlocked ? (
               <div className="cal-day-blocked-label">Blocked</div>
             ) : day.rest ? (
@@ -1032,7 +983,6 @@ function WeekStrip({ days, blocked, onDayClick, onBlockToggle, accDone }) {
                   </div>
                 )}
 
-                {/* Accessory progress bar */}
                 {accs.length > 0 && (
                   <div className="cal-day-acc-progress">
                     <div
@@ -1056,23 +1006,21 @@ function WeekStrip({ days, blocked, onDayClick, onBlockToggle, accDone }) {
 
 export default function CalendarPage({
   athlete,
-  nutrition = {},   // { periodDays: string[], bulkCutBlocks: {type,start,end}[] }
+  nutrition = {},
   goToScreen,
 }) {
   const today = useMemo(() => today0(), []);
 
-  const [schedule,    setSchedule]    = useState(() => buildSchedule(athlete, nutrition));
-  const [blocked,     setBlocked]     = useState(new Set());
-  const [accDone,     setAccDone]     = useState({});
-  const [modalDay,    setModalDay]    = useState(null);
-  const [weekOffset,  setWeekOffset]  = useState(0);
+  const [schedule,   setSchedule]   = useState(() => buildSchedule(athlete, nutrition));
+  const [blocked,    setBlocked]    = useState(new Set());
+  const [accDone,    setAccDone]    = useState({});
+  const [modalDay,   setModalDay]   = useState(null);
+  const [weekOffset, setWeekOffset] = useState(0);
 
-  // Rebuild whenever athlete profile or nutrition data changes
   useEffect(() => {
     setSchedule(buildSchedule(athlete, nutrition));
   }, [athlete, nutrition]);
 
-  // Derived cycle state
   const useCycle = athlete?.gender === 'female' && athlete?.cycleTracking === true;
   const cycleAnchor = useMemo(
     () => useCycle ? inferCycleAnchor(nutrition?.periodDays || []) : null,
@@ -1084,7 +1032,6 @@ export default function CalendarPage({
     [hasCycleData, today, cycleAnchor]
   );
 
-  // Today's bulk/cut block
   const todayBlock = useMemo(() => {
     const k = toKey(today);
     return (nutrition?.bulkCutBlocks || []).find(b => k >= b.start && k <= b.end) || null;
@@ -1119,7 +1066,6 @@ export default function CalendarPage({
   return (
     <div className="screen cal-screen">
 
-      {/* ── Page header ── */}
       <div className="cal-page-header">
         <div>
           <h1 className="page-title gradient-purple">Training Calendar</h1>
@@ -1133,7 +1079,6 @@ export default function CalendarPage({
         </div>
       </div>
 
-      {/* ── Context banners — bulk/cut + cycle + injury ── */}
       <ContextBanners
         todayCycle={todayCycle}
         todayBlock={todayBlock}
@@ -1142,7 +1087,6 @@ export default function CalendarPage({
         useCycle={useCycle}
       />
 
-      {/* ── Week navigator ── */}
       <div className="cal-week-nav">
         <button className="cal-week-btn" disabled={weekOffset === 0} onClick={() => setWeekOffset(0)}>
           ← Week 1
@@ -1153,7 +1097,6 @@ export default function CalendarPage({
         </button>
       </div>
 
-      {/* ── 7-day card strip ── */}
       <WeekStrip
         days={visibleDays}
         blocked={blocked}
@@ -1162,10 +1105,8 @@ export default function CalendarPage({
         accDone={accDone}
       />
 
-      {/* ── Legend ── */}
       <CalendarLegend useCycle={useCycle} hasCycleData={hasCycleData} />
 
-      {/* ── AI insight panel ── */}
       <AIInsightPanel
         athlete={athlete}
         schedule={schedule}
@@ -1173,10 +1114,10 @@ export default function CalendarPage({
         nutrition={nutrition}
       />
 
-      {/* ── Day detail modal ── */}
       {modalDay && (
         <DayModal
           day={modalDay}
+          athlete={athlete}
           onClose={() => setModalDay(null)}
           onBlock={toggleBlock}
           onStartLift={() => goToScreen?.('liveWorkout')}
