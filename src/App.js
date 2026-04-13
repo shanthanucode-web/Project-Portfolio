@@ -250,22 +250,23 @@ function App() {
           />
         )}
 
-        // {screen === 'calendar' && (
-        //   <CalendarPage
-        //     athlete={athlete}
-        //     schedule={schedule}
-        //     setSchedule={setSchedule}
-        //     goBack={goBack}
-        //     goToScreen={goToScreen}
-        //   />
-        // )}
         {screen === 'calendar' && (
           <CalendarPage
             athlete={athlete}
-            nutrition={nutrition}     // ← this line must be added
+            schedule={schedule}
+            nutrition={nutrition}
+            setSchedule={setSchedule}
+            goBack={goBack}
             goToScreen={goToScreen}
           />
         )}
+        // {screen === 'calendar' && (
+        //   <CalendarPage
+        //     athlete={athlete}
+        //     nutrition={nutrition}     // ← this line must be added
+        //     goToScreen={goToScreen}
+        //   />
+        // )}
 
         {screen === 'nutrition' && (
           <NutritionPage
