@@ -260,13 +260,7 @@ function App() {
             goToScreen={goToScreen}
           />
         )}
-        // {screen === 'calendar' && (
-        //   <CalendarPage
-        //     athlete={athlete}
-        //     nutrition={nutrition}     // ← this line must be added
-        //     goToScreen={goToScreen}
-        //   />
-        // )}
+
 
         {screen === 'nutrition' && (
           <NutritionPage
