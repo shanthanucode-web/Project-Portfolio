@@ -254,11 +254,13 @@ function App() {
           <CalendarPage
             athlete={athlete}
             schedule={schedule}
+            nutrition={nutrition}
             setSchedule={setSchedule}
             goBack={goBack}
             goToScreen={goToScreen}
           />
         )}
+
 
         {screen === 'nutrition' && (
           <NutritionPage
