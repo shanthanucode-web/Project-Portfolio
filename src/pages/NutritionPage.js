@@ -124,6 +124,424 @@ function DropletIcon({ filled, predicted }) {
   );
 }
 
+/* ─── NEW: Calorie calculator helper ─── */
+function calcDailyCalories(athlete, cycleType) {
+  // Mifflin-St Jeor BMR
+  const weightKg = (athlete.bodyweight || 130) * 0.453592;
+  const heightCm = ((athlete.heightFt || 5) * 12 + (athlete.heightIn || 4)) * 2.54;
+  const age = athlete.age || 25;
+  const isMale = athlete.gender === 'male';
+
+  let bmr;
+  if (isMale) {
+    bmr = 10 * weightKg + 6.25 * heightCm - 5 * age + 5;
+  } else {
+    bmr = 10 * weightKg + 6.25 * heightCm - 5 * age - 161;
+  }
+
+  // Moderate activity multiplier (3-5 days/week lifting)
+  const tdee = Math.round(bmr * 1.55);
+
+  // Adjust for cycle type
+  if (cycleType === 'bulk') return tdee + 300;
+  if (cycleType === 'cut') return tdee - 300;
+  return tdee; // maintain or none
+}
+
+/* ─── NEW: Calorie Ring SVG ─── */
+function CalorieRing({ consumed, goal }) {
+  const radius = 80;
+  const stroke = 10;
+  const normalised = radius - stroke / 2;
+  const circumference = 2 * Math.PI * normalised;
+  const pct = Math.min(consumed / goal, 1);
+  const offset = circumference * (1 - pct);
+  const isOver = consumed > goal;
+
+  const ringColor = isOver
+    ? '#ff9f63'
+    : pct > 0.85
+    ? '#ffd84d'
+    : '#57f0c0';
+
+  return (
+    <svg width={radius * 2} height={radius * 2} style={{ display: 'block' }}>
+      {/* Track */}
+      <circle
+        cx={radius}
+        cy={radius}
+        r={normalised}
+        fill="none"
+        stroke="rgba(255,255,255,0.08)"
+        strokeWidth={stroke}
+      />
+      {/* Fill */}
+      <circle
+        cx={radius}
+        cy={radius}
+        r={normalised}
+        fill="none"
+        stroke={ringColor}
+        strokeWidth={stroke}
+        strokeLinecap="round"
+        strokeDasharray={circumference}
+        strokeDashoffset={offset}
+        transform={`rotate(-90 ${radius} ${radius})`}
+        style={{ transition: 'stroke-dashoffset 0.5s ease, stroke 0.4s ease' }}
+      />
+      {/* Centre text */}
+      <text
+        x={radius}
+        y={radius - 10}
+        textAnchor="middle"
+        fill="#f7f9ff"
+        fontSize="22"
+        fontWeight="700"
+        fontFamily="'Space Grotesk', sans-serif"
+      >
+        {consumed.toLocaleString()}
+      </text>
+      <text
+        x={radius}
+        y={radius + 10}
+        textAnchor="middle"
+        fill="rgba(216,226,255,0.56)"
+        fontSize="11"
+        fontWeight="600"
+        fontFamily="'Inter', sans-serif"
+      >
+        of {goal.toLocaleString()} kcal
+      </text>
+      <text
+        x={radius}
+        y={radius + 26}
+        textAnchor="middle"
+        fill={ringColor}
+        fontSize="11"
+        fontWeight="700"
+        fontFamily="'Inter', sans-serif"
+      >
+        {isOver ? `+${(consumed - goal).toLocaleString()} over` : `${(goal - consumed).toLocaleString()} left`}
+      </text>
+    </svg>
+  );
+}
+
+/* ─── NEW: Calorie Tracker Component ─── */
+function CalorieTracker({ athlete, cycleType }) {
+  const todayKey = toKey(new Date());
+  const storageKey = `calorie-meals-${todayKey}`;
+
+  const [meals, setMeals] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem(storageKey) || '[]');
+    } catch {
+      return [];
+    }
+  });
+  const [mealName, setMealName] = useState('');
+  const [mealCals, setMealCals] = useState('');
+  const [inputError, setInputError] = useState('');
+
+  const goal = useMemo(() => calcDailyCalories(athlete, cycleType), [athlete, cycleType]);
+  const consumed = useMemo(() => meals.reduce((s, m) => s + m.cals, 0), [meals]);
+
+  function saveMeals(next) {
+    setMeals(next);
+    try { localStorage.setItem(storageKey, JSON.stringify(next)); } catch {}
+  }
+
+  function addMeal() {
+    const cals = parseInt(mealCals, 10);
+    if (!mealName.trim()) { setInputError('Please enter a meal name.'); return; }
+    if (!cals || cals <= 0) { setInputError('Please enter a valid calorie amount.'); return; }
+    setInputError('');
+    const next = [...meals, { id: Date.now(), name: mealName.trim(), cals }];
+    saveMeals(next);
+    setMealName('');
+    setMealCals('');
+  }
+
+  function removeMeal(id) {
+    saveMeals(meals.filter((m) => m.id !== id));
+  }
+
+  const cycleLabel = cycleType
+    ? cycleType.charAt(0).toUpperCase() + cycleType.slice(1)
+    : 'Maintenance';
+
+  const cycleDotColor = {
+    bulk: '#57a5ff',
+    cut: '#ff6fd8',
+    maintain: '#57f0c0',
+  }[cycleType] || 'rgba(255,255,255,0.4)';
+
+  return (
+    <div style={styles.trackerWrap}>
+      {/* Header */}
+      <div style={styles.trackerHeader}>
+        <div>
+          <div style={styles.trackerTitle}>Daily Calories</div>
+          <div style={styles.trackerSub}>
+            <span style={{ ...styles.cycleDot, background: cycleDotColor }} />
+            {cycleLabel} · {goal.toLocaleString()} kcal target
+          </div>
+        </div>
+        <div style={styles.dateChip}>{new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</div>
+      </div>
+
+      {/* Ring + meals side by side */}
+      <div style={styles.trackerBody}>
+        {/* Ring */}
+        <div style={styles.ringWrap}>
+          <CalorieRing consumed={consumed} goal={goal} />
+          <div style={styles.ringMeta}>
+            <div style={styles.ringMetaItem}>
+              <span style={styles.ringMetaDot} />
+              <span style={styles.ringMetaText}>{meals.length} meal{meals.length !== 1 ? 's' : ''} logged</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Meal list */}
+        <div style={styles.mealsCol}>
+          {meals.length === 0 ? (
+            <div style={styles.emptyMeals}>No meals logged yet — add your first below ↓</div>
+          ) : (
+            <div style={styles.mealList}>
+              {meals.map((m) => (
+                <div key={m.id} style={styles.mealRow}>
+                  <span style={styles.mealName}>{m.name}</span>
+                  <span style={styles.mealCals}>{m.cals.toLocaleString()} kcal</span>
+                  <button
+                    style={styles.mealRemove}
+                    onClick={() => removeMeal(m.id)}
+                    title="Remove"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Add meal form */}
+      <div style={styles.addRow}>
+        <input
+          style={styles.addInput}
+          placeholder="Meal name (e.g. Chicken & rice)"
+          value={mealName}
+          onChange={(e) => setMealName(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && addMeal()}
+        />
+        <input
+          style={{ ...styles.addInput, maxWidth: 110 }}
+          placeholder="Calories"
+          type="number"
+          min="1"
+          value={mealCals}
+          onChange={(e) => setMealCals(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && addMeal()}
+        />
+        <button style={styles.addBtn} onClick={addMeal}>+ Add</button>
+      </div>
+      {inputError && <div style={styles.errorText}>{inputError}</div>}
+    </div>
+  );
+}
+
+/* ─── Inline styles for new tracker (scoped, no conflicts) ─── */
+const styles = {
+  trackerWrap: {
+    marginTop: 20,
+    borderRadius: 28,
+    padding: '22px 22px 18px',
+    background: 'linear-gradient(180deg, rgba(255,255,255,0.12) 0%, rgba(255,255,255,0.07) 100%)',
+    backdropFilter: 'blur(24px) saturate(140%)',
+    WebkitBackdropFilter: 'blur(24px) saturate(140%)',
+    border: '1px solid rgba(255,255,255,0.12)',
+    boxShadow: '0 10px 30px rgba(0,0,0,0.22)',
+  },
+  trackerHeader: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    marginBottom: 20,
+  },
+  trackerTitle: {
+    fontFamily: "'Space Grotesk', sans-serif",
+    fontSize: '1.1rem',
+    fontWeight: 700,
+    color: '#f7f9ff',
+    letterSpacing: '0.02em',
+    marginBottom: 4,
+  },
+  trackerSub: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    fontSize: '0.76rem',
+    fontWeight: 600,
+    color: 'rgba(216,226,255,0.56)',
+  },
+  cycleDot: {
+    display: 'inline-block',
+    width: 8,
+    height: 8,
+    borderRadius: '50%',
+    flexShrink: 0,
+  },
+  dateChip: {
+    padding: '6px 12px',
+    borderRadius: 999,
+    background: 'rgba(255,255,255,0.08)',
+    border: '1px solid rgba(255,255,255,0.1)',
+    fontSize: '0.72rem',
+    fontWeight: 700,
+    color: 'rgba(247,249,255,0.7)',
+    whiteSpace: 'nowrap',
+  },
+  trackerBody: {
+    display: 'flex',
+    gap: 24,
+    alignItems: 'flex-start',
+    marginBottom: 18,
+    flexWrap: 'wrap',
+  },
+  ringWrap: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: 10,
+    flexShrink: 0,
+  },
+  ringMeta: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 4,
+    alignItems: 'center',
+  },
+  ringMetaItem: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+  },
+  ringMetaDot: {
+    width: 7,
+    height: 7,
+    borderRadius: '50%',
+    background: 'rgba(255,255,255,0.3)',
+    flexShrink: 0,
+  },
+  ringMetaText: {
+    fontSize: '0.72rem',
+    fontWeight: 600,
+    color: 'rgba(216,226,255,0.56)',
+  },
+  mealsCol: {
+    flex: 1,
+    minWidth: 180,
+  },
+  emptyMeals: {
+    fontSize: '0.82rem',
+    color: 'rgba(216,226,255,0.4)',
+    fontWeight: 600,
+    padding: '14px 0',
+    lineHeight: 1.5,
+  },
+  mealList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 7,
+    maxHeight: 220,
+    overflowY: 'auto',
+    paddingRight: 4,
+  },
+  mealRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    padding: '9px 12px',
+    borderRadius: 14,
+    background: 'rgba(255,255,255,0.06)',
+    border: '1px solid rgba(255,255,255,0.09)',
+  },
+  mealName: {
+    flex: 1,
+    fontSize: '0.86rem',
+    fontWeight: 600,
+    color: 'rgba(247,249,255,0.85)',
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+  },
+  mealCals: {
+    fontSize: '0.82rem',
+    fontWeight: 700,
+    color: '#57f0c0',
+    whiteSpace: 'nowrap',
+  },
+  mealRemove: {
+    width: 24,
+    height: 24,
+    borderRadius: '50%',
+    background: 'rgba(255,255,255,0.08)',
+    border: '1px solid rgba(255,255,255,0.1)',
+    color: 'rgba(247,249,255,0.5)',
+    cursor: 'pointer',
+    fontSize: '1rem',
+    lineHeight: 1,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+    padding: 0,
+    transition: 'background 0.15s',
+  },
+  addRow: {
+    display: 'flex',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  addInput: {
+    flex: 1,
+    minWidth: 120,
+    minHeight: 44,
+    borderRadius: 14,
+    padding: '0 14px',
+    background: 'linear-gradient(180deg, rgba(255,255,255,0.10), rgba(255,255,255,0.06))',
+    border: '1px solid rgba(255,255,255,0.12)',
+    color: '#f7f9ff',
+    fontSize: '0.86rem',
+    fontWeight: 600,
+    outline: 'none',
+    fontFamily: "'Inter', sans-serif",
+  },
+  addBtn: {
+    minHeight: 44,
+    padding: '0 18px',
+    borderRadius: 14,
+    background: 'linear-gradient(135deg, #fff4b0 0%, #ffd84d 18%, #ffffff 40%, #c6deff 74%, #97b6ff 100%)',
+    color: '#06101f',
+    fontFamily: "'Space Grotesk', sans-serif",
+    fontSize: '0.9rem',
+    fontWeight: 700,
+    cursor: 'pointer',
+    border: 'none',
+    boxShadow: '0 10px 24px rgba(255,216,77,0.15)',
+    transition: 'transform 0.16s ease, box-shadow 0.16s ease',
+    whiteSpace: 'nowrap',
+  },
+  errorText: {
+    marginTop: 8,
+    fontSize: '0.76rem',
+    fontWeight: 700,
+    color: '#ff9f63',
+  },
+};
+
 /* ─── main component ─── */
 export default function NutritionPage({ athlete, nutrition, setNutrition, goToScreen }) {
   const today = useMemo(() => {
@@ -194,7 +612,7 @@ export default function NutritionPage({ athlete, nutrition, setNutrition, goToSc
   }
 
   function handleDayClick(date) {
-    if (!showBulkCut) return; // no cycle editing in period-only mode
+    if (!showBulkCut) return;
     if (date < today) return;
     setSelectedDate(date);
   }
@@ -358,7 +776,6 @@ export default function NutritionPage({ athlete, nutrition, setNutrition, goToSc
                     {b && <span className="nutr-day-tag">{b.type}</span>}
                     {isToday && <span className="nutr-today-dot" />}
 
-                    {/* Droplet — shown when cycleTracking is on */}
                     {trackPeriod && (
                       <button
                         className={[
@@ -396,7 +813,6 @@ export default function NutritionPage({ athlete, nutrition, setNutrition, goToSc
               )}
             </div>
 
-            {/* Period stats — only when tracking */}
             {trackPeriod && (
               <div className="nutr-period-stats-bar">{periodStatsText}</div>
             )}
@@ -477,6 +893,13 @@ export default function NutritionPage({ athlete, nutrition, setNutrition, goToSc
             </div>
           )}
         </div>
+
+        {/* ─── NEW: Calorie Tracker ─── */}
+        <CalorieTracker
+          athlete={athlete}
+          cycleType={todayBlock?.type ?? null}
+        />
+
       </div>
     </div>
   );
