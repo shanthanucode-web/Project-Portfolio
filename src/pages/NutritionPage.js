@@ -653,6 +653,7 @@ const wStyles = {
     display: 'flex',
     flexDirection: 'column',
     gap: 8,
+    fontFamily: "'Inter', sans-serif",
   },
   header: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 },
   title: { fontSize: '0.8rem', fontWeight: 700, color: 'rgba(247,249,255,0.8)' },
@@ -774,7 +775,7 @@ function WeightTrendGraph({ weightLog, goalWeight, athlete }) {
                 stroke="rgba(255,255,255,0.06)" strokeWidth="1"
               />
               <text x={PAD.left - 6} y={yScale(v) + 4} textAnchor="end"
-                fill="rgba(216,226,255,0.35)" fontSize="9" fontFamily="Inter,sans-serif">
+                fill="rgba(216,226,255,0.35)" fontSize="9" fontFamily="'Inter', sans-serif">
                 {Math.round(v)}
               </text>
             </g>
@@ -801,7 +802,7 @@ function WeightTrendGraph({ weightLog, goalWeight, athlete }) {
                 stroke="#ffd84d" strokeWidth="1.5" strokeDasharray="6 4" opacity="0.7"
               />
               <text x={PAD.left + innerW + 4} y={goalY + 4}
-                fill="#ffd84d" fontSize="9" fontFamily="Inter,sans-serif" opacity="0.8">
+                fill="#ffd84d" fontSize="9" fontFamily="'Inter', sans-serif" opacity="0.8">
                 goal
               </text>
             </g>
@@ -824,13 +825,13 @@ function WeightTrendGraph({ weightLog, goalWeight, athlete }) {
             <g key={i}>
               <circle cx={p.x} cy={p.y} r="4" fill="#8f7cff" stroke="rgba(10,16,36,0.9)" strokeWidth="2" />
               <text x={p.x} y={PAD.top + innerH + 16} textAnchor="middle"
-                fill="rgba(216,226,255,0.4)" fontSize="8.5" fontFamily="Inter,sans-serif">
+                fill="rgba(216,226,255,0.4)" fontSize="8.5" fontFamily="'Inter', sans-serif">
                 {fmtShort(fromKey(p.date))}
               </text>
               {/* Tooltip weight label on hover approximated as always-shown for latest */}
               {i === points.length - 1 && (
                 <text x={p.x} y={p.y - 9} textAnchor="middle"
-                  fill="#f7f9ff" fontSize="10" fontWeight="700" fontFamily="Inter,sans-serif">
+                  fill="#f7f9ff" fontSize="10" fontWeight="700" fontFamily="'Inter', sans-serif">
                   {p.weight}
                 </text>
               )}
@@ -857,12 +858,12 @@ const gStyles = {
     textAlign: 'center',
   },
   emptyTitle: {
-    fontFamily: "'Space Grotesk',sans-serif",
+    fontFamily: "'Space Grotesk', sans-serif",
     fontSize: '0.95rem', fontWeight: 700, color: '#f7f9ff', marginBottom: 8,
   },
   emptyMsg: { fontSize: '0.8rem', color: 'rgba(216,226,255,0.45)', fontWeight: 600, lineHeight: 1.5 },
   header: { display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 14 },
-  title: { fontFamily: "'Space Grotesk',sans-serif", fontSize: '1rem', fontWeight: 700, color: '#f7f9ff', marginBottom: 2 },
+  title: { fontFamily: "'Space Grotesk', sans-serif", fontSize: '1rem', fontWeight: 700, color: '#f7f9ff', marginBottom: 2 },
   sub: { fontSize: '0.72rem', fontWeight: 600, color: 'rgba(216,226,255,0.45)' },
   goalChip: {
     display: 'flex', alignItems: 'center', gap: 6,
@@ -1005,6 +1006,7 @@ const styles = {
     WebkitBackdropFilter: 'blur(24px) saturate(140%)',
     border: '1px solid rgba(255,255,255,0.12)',
     boxShadow: '0 10px 30px rgba(0,0,0,0.22)',
+    fontFamily: "'Inter', sans-serif",
   },
   trackerHeader: {
     display: 'flex',
@@ -1181,6 +1183,7 @@ const styles = {
     display: 'flex',
     flexDirection: 'column',
     overflow: 'hidden',
+    fontFamily: "'Inter', sans-serif",
   },
   modalHeader: {
     display: 'flex',
@@ -1330,6 +1333,7 @@ const styles = {
     display: 'flex',
     flexDirection: 'column',
     gap: 12,
+    fontFamily: "'Inter', sans-serif",
   },
   aiEstimatorHeader: { display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' },
   aiEstimatorTitle: {
