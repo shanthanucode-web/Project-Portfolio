@@ -162,6 +162,12 @@ function FoodCatalogModal({ onAdd, onClose }) {
   const [customErr, setCustomErr] = useState('');
   const [tab, setTab] = useState('catalog');
 
+  // AI tab state
+  const [aiQuery, setAiQuery] = useState('');
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiResult, setAiResult] = useState(null);
+  const [aiError, setAiError] = useState('');
+
   const tags = ['All', 'Breakfast', 'Lunch', 'Dinner', 'Snack'];
 
   const filtered = FOOD_CATALOG.filter((f) => {
@@ -186,21 +192,66 @@ function FoodCatalogModal({ onAdd, onClose }) {
     setCustomName(''); setCustomCals(''); setCustomProtein(''); setCustomCarbs(''); setCustomFat('');
   }
 
+  async function handleAiEstimate() {
+    if (!aiQuery.trim()) { setAiError('Please describe a meal first.'); return; }
+    setAiLoading(true);
+    setAiResult(null);
+    setAiError('');
+    try {
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 300,
+          system: `You are a precise nutrition estimator. When given a food or meal description, respond ONLY with a JSON object (no markdown, no extra text) in this exact format:
+{"name":"<short meal name>","cals":<integer>,"protein":<integer grams>,"carbs":<integer grams>,"fat":<integer grams>,"note":"<one short sentence about accuracy or assumptions>"}
+Use realistic, research-backed values. For fast food, use the actual published nutrition data. For home-cooked meals, use standard portion sizes. Always return integers for numeric fields.`,
+          messages: [{ role: 'user', content: aiQuery.trim() }],
+        }),
+      });
+      const data = await res.json();
+      const text = data.content?.find((b) => b.type === 'text')?.text || '';
+      const clean = text.replace(/```json|```/g, '').trim();
+      const parsed = JSON.parse(clean);
+      if (!parsed.cals || !parsed.name) throw new Error('Invalid response');
+      setAiResult(parsed);
+    } catch {
+      setAiError('Could not estimate this meal — try rephrasing or use the Custom tab.');
+    } finally {
+      setAiLoading(false);
+    }
+  }
+
+  function handleAiConfirm() {
+    if (!aiResult) return;
+    onAdd({ id: Date.now(), name: aiResult.name, cals: aiResult.cals, protein: aiResult.protein || 0, carbs: aiResult.carbs || 0, fat: aiResult.fat || 0 });
+    setAiQuery('');
+    setAiResult(null);
+  }
+
+  const TABS = [
+    { key: 'catalog', label: '📋 Catalog' },
+    { key: 'custom',  label: '✏️ Custom' },
+  ];
+
   return (
     <div style={styles.modalOverlay} onClick={onClose}>
       <div style={styles.modalBox} onClick={(e) => e.stopPropagation()}>
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
         <div style={styles.modalHeader}>
-          <span style={styles.modalTitle}>Food Catalog</span>
+          <span style={styles.modalTitle}>Add Food</span>
           <button style={styles.modalClose} onClick={onClose}>×</button>
         </div>
         <div style={styles.modalTabs}>
-          {['catalog', 'custom'].map((t) => (
-            <button key={t} style={{ ...styles.modalTab, ...(tab === t ? styles.modalTabActive : {}) }} onClick={() => setTab(t)}>
-              {t === 'catalog' ? '📋 Catalog' : '✏️ Custom meal'}
+          {TABS.map((t) => (
+            <button key={t.key} style={{ ...styles.modalTab, ...(tab === t.key ? styles.modalTabActive : {}) }} onClick={() => setTab(t.key)}>
+              {t.label}
             </button>
           ))}
         </div>
-        {tab === 'catalog' ? (
+
+        {tab === 'catalog' && (
           <>
             <input style={styles.modalSearch} placeholder="Search meals..." value={search} onChange={(e) => setSearch(e.target.value)} autoFocus />
             <div style={styles.tagRow}>
@@ -209,7 +260,7 @@ function FoodCatalogModal({ onAdd, onClose }) {
               ))}
             </div>
             <div style={styles.foodList}>
-              {filtered.length === 0 && <div style={styles.noResults}>No meals found — try the Custom tab!</div>}
+              {filtered.length === 0 && <div style={styles.noResults}>No meals found — try the AI Estimate tab!</div>}
               {filtered.map((f) => (
                 <div key={f.id} style={styles.foodRow}>
                   <div style={styles.foodInfo}>
@@ -226,7 +277,9 @@ function FoodCatalogModal({ onAdd, onClose }) {
               ))}
             </div>
           </>
-        ) : (
+        )}
+
+        {tab === 'custom' && (
           <div style={styles.customForm}>
             <input style={styles.addInput} placeholder="Meal name *" value={customName} onChange={(e) => setCustomName(e.target.value)} />
             <div style={styles.customGrid}>
@@ -372,6 +425,132 @@ function CalorieRing({ consumed, goal }) {
   );
 }
 
+/* ─── AI Meal Estimator ─── */
+function AiMealEstimator({ onAdd }) {
+  const [query, setQuery] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState('');
+
+  async function handleEstimate() {
+    if (!query.trim()) { setError('Please describe a meal first.'); return; }
+    setLoading(true);
+    setResult(null);
+    setError('');
+    try {
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 300,
+          system: `You are a precise nutrition estimator. When given a food or meal description, respond ONLY with a JSON object (no markdown, no extra text) in this exact format:
+{"name":"<short meal name>","cals":<integer>,"protein":<integer grams>,"carbs":<integer grams>,"fat":<integer grams>,"note":"<one short sentence about accuracy or assumptions>"}
+Use realistic research-backed values. For fast food use actual published nutrition data. For home-cooked meals use standard portion sizes. Always return integers for numeric fields.`,
+          messages: [{ role: 'user', content: query.trim() }],
+        }),
+      });
+      const data = await res.json();
+      const text = data.content?.find((b) => b.type === 'text')?.text || '';
+      const clean = text.replace(/```json|```/g, '').trim();
+      const parsed = JSON.parse(clean);
+      if (!parsed.cals || !parsed.name) throw new Error('bad response');
+      setResult(parsed);
+    } catch {
+      setError('Could not estimate — try rephrasing (e.g. "Big Mac meal large size").');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function handleConfirm() {
+    if (!result) return;
+    onAdd({ id: Date.now(), name: result.name, cals: result.cals, protein: result.protein || 0, carbs: result.carbs || 0, fat: result.fat || 0 });
+    setQuery('');
+    setResult(null);
+  }
+
+  const EXAMPLES = [
+    'Big Mac meal large fries Coke',
+    'Chipotle chicken bowl rice black beans guac',
+    'Starbucks grande iced latte oat milk',
+    'Grilled salmon 6oz with roasted asparagus',
+  ];
+
+  return (
+    <div style={styles.aiEstimatorWrap}>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      <div style={styles.aiEstimatorHeader}>
+        <span style={styles.aiEstimatorTitle}>🤖 Describe a meal</span>
+        <span style={styles.aiEstimatorSub}>AI will estimate the calories & macros</span>
+      </div>
+
+      {/* Example chips */}
+      <div style={styles.aiExamples}>
+        {EXAMPLES.map((ex) => (
+          <span key={ex} style={styles.aiExampleChip} onClick={() => { setQuery(ex); setResult(null); setError(''); }}>{ex}</span>
+        ))}
+      </div>
+
+      {/* Input row */}
+      <div style={styles.aiInputRow}>
+        <input
+          style={{ ...styles.addInput, flex: 1 }}
+          placeholder="e.g. 'Chick-fil-A spicy deluxe with waffle fries' or '2 eggs scrambled with toast'"
+          value={query}
+          onChange={(e) => { setQuery(e.target.value); setResult(null); setError(''); }}
+          onKeyDown={(e) => e.key === 'Enter' && !loading && handleEstimate()}
+        />
+        <button
+          style={{ ...styles.addBtn, minWidth: 100, opacity: loading ? 0.65 : 1 }}
+          onClick={handleEstimate}
+          disabled={loading}
+        >
+          {loading ? '...' : 'Estimate'}
+        </button>
+      </div>
+
+      {loading && (
+        <div style={styles.aiLoadingWrap}>
+          <div style={styles.aiSpinner} />
+          <span style={styles.aiLoadingText}>Analysing nutrition data…</span>
+        </div>
+      )}
+
+      {error && <div style={styles.errorText}>{error}</div>}
+
+      {result && (
+        <div style={styles.aiResultCard}>
+          <div style={styles.aiResultName}>{result.name}</div>
+          <div style={styles.aiResultMacros}>
+            <div style={styles.aiMacroPill}>
+              <span style={styles.aiMacroVal}>{result.cals}</span>
+              <span style={styles.aiMacroLbl}>kcal</span>
+            </div>
+            <div style={{ ...styles.aiMacroPill, borderColor: 'rgba(87,165,255,0.3)' }}>
+              <span style={{ ...styles.aiMacroVal, color: '#57a5ff' }}>{result.protein}g</span>
+              <span style={styles.aiMacroLbl}>protein</span>
+            </div>
+            <div style={{ ...styles.aiMacroPill, borderColor: 'rgba(255,216,77,0.3)' }}>
+              <span style={{ ...styles.aiMacroVal, color: '#ffd84d' }}>{result.carbs}g</span>
+              <span style={styles.aiMacroLbl}>carbs</span>
+            </div>
+            <div style={{ ...styles.aiMacroPill, borderColor: 'rgba(255,159,99,0.3)' }}>
+              <span style={{ ...styles.aiMacroVal, color: '#ff9f63' }}>{result.fat}g</span>
+              <span style={styles.aiMacroLbl}>fat</span>
+            </div>
+          </div>
+          {result.note && <div style={styles.aiResultNote}>ℹ️ {result.note}</div>}
+          <div style={styles.aiResultActions}>
+            <button style={styles.addBtn} onClick={handleConfirm}>✓ Add to log</button>
+            <button style={styles.aiRetryBtn} onClick={() => setResult(null)}>Try again</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ─── NEW: Calorie Tracker Component ─── */
 function CalorieTracker({ athlete, cycleType }) {
   const todayKey = toKey(new Date());
@@ -470,6 +649,9 @@ function CalorieTracker({ athlete, cycleType }) {
             )}
           </div>
         </div>
+
+        {/* AI Estimator */}
+        <AiMealEstimator onAdd={handleAddMeal} />
 
         {/* Macro bars */}
         <div style={styles.macroBarsWrap}>
@@ -776,7 +958,64 @@ const styles = {
   },
   customForm: { padding: '14px 20px 20px', display: 'flex', flexDirection: 'column', gap: 12 },
   customGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 },
-  customLabel: { fontSize: '0.7rem', fontWeight: 800, color: 'rgba(216,226,255,0.5)', textTransform: 'uppercase', letterSpacing: '0.14em', marginBottom: 5 },
+  /* --- AI tab --- */
+  aiTabWrap: { padding: '14px 20px 20px', display: 'flex', flexDirection: 'column', gap: 12, overflowY: 'auto' },
+  aiHint: { fontSize: '0.8rem', fontWeight: 600, color: 'rgba(216,226,255,0.55)', lineHeight: 1.5 },
+  aiExamples: { display: 'flex', flexWrap: 'wrap', gap: 7 },
+  aiExampleChip: {
+    padding: '5px 12px', borderRadius: 999,
+    background: 'rgba(143,124,255,0.12)', border: '1px solid rgba(143,124,255,0.22)',
+    color: 'rgba(247,249,255,0.75)', fontSize: '0.74rem', fontWeight: 700, cursor: 'pointer',
+  },
+  aiInputRow: { display: 'flex', gap: 8, alignItems: 'center' },
+  aiLoadingWrap: { display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0' },
+  aiSpinner: {
+    width: 18, height: 18, borderRadius: '50%', flexShrink: 0,
+    border: '2px solid rgba(255,255,255,0.12)',
+    borderTopColor: '#8f7cff',
+    animation: 'spin 0.8s linear infinite',
+  },
+  aiLoadingText: { fontSize: '0.8rem', fontWeight: 600, color: 'rgba(216,226,255,0.5)' },
+  aiResultCard: {
+    borderRadius: 18, padding: '14px 16px',
+    background: 'linear-gradient(135deg, rgba(143,124,255,0.12), rgba(85,214,255,0.08))',
+    border: '1px solid rgba(143,124,255,0.22)',
+    display: 'flex', flexDirection: 'column', gap: 10,
+  },
+  aiResultName: { fontSize: '0.95rem', fontWeight: 700, color: '#f7f9ff' },
+  aiResultMacros: { display: 'flex', gap: 8, flexWrap: 'wrap' },
+  aiMacroPill: {
+    display: 'flex', flexDirection: 'column', alignItems: 'center',
+    padding: '7px 12px', borderRadius: 12,
+    background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
+    minWidth: 60,
+  },
+  aiMacroVal: { fontSize: '1rem', fontWeight: 800, color: '#f7f9ff', lineHeight: 1.1 },
+  aiMacroLbl: { fontSize: '0.66rem', fontWeight: 700, color: 'rgba(216,226,255,0.5)', textTransform: 'uppercase', letterSpacing: '0.1em', marginTop: 2 },
+  aiResultNote: { fontSize: '0.74rem', fontWeight: 600, color: 'rgba(216,226,255,0.45)', lineHeight: 1.4 },
+  aiResultActions: { display: 'flex', gap: 8, alignItems: 'center' },
+  aiEstimatorWrap: {
+    marginTop: 16,
+    borderRadius: 22,
+    padding: '16px 18px 18px',
+    background: 'linear-gradient(135deg, rgba(143,124,255,0.10), rgba(85,214,255,0.07))',
+    border: '1px solid rgba(143,124,255,0.2)',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 12,
+  },
+  aiEstimatorHeader: { display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' },
+  aiEstimatorTitle: {
+    fontFamily: "'Space Grotesk', sans-serif",
+    fontSize: '0.95rem', fontWeight: 700, color: '#f7f9ff',
+  },
+  aiEstimatorSub: { fontSize: '0.74rem', fontWeight: 600, color: 'rgba(216,226,255,0.5)' },
+  aiRetryBtn: {
+    minHeight: 44, padding: '0 16px', borderRadius: 14,
+    background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.1)',
+    color: 'rgba(247,249,255,0.65)', fontSize: '0.86rem', fontWeight: 700, cursor: 'pointer',
+  },
+    customLabel: { fontSize: '0.7rem', fontWeight: 800, color: 'rgba(216,226,255,0.5)', textTransform: 'uppercase', letterSpacing: '0.14em', marginBottom: 5 },
 };
 
 /* ─── main component ─── */
