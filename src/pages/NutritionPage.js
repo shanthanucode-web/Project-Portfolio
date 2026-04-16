@@ -1426,10 +1426,51 @@ export default function NutritionPage({ athlete, nutrition, setNutrition, goToSc
     else setViewMonth((m) => m + 1);
   }
 
+  // Weight log modal state (separate from cycle apply modal)
+  const [showWeightLogModal, setShowWeightLogModal] = useState(false);
+  const [weightLogDate, setWeightLogDate] = useState(null);
+  const [weightLogValue, setWeightLogValue] = useState('');
+  const [weightLogErr, setWeightLogErr] = useState('');
+
   function handleDayClick(date) {
     if (!showBulkCut) return;
-    if (date < today) return;
-    setSelectedDate(date);
+    const key = toKey(date);
+    const isToday = key === toKey(today);
+    const isPast = date < today;
+    if (isPast || isToday) {
+      // Open weight log modal for past/today — pre-fill if already logged
+      const existing = (nutrition.weightLog ?? []).find((e) => e.date === key);
+      setWeightLogDate(date);
+      setWeightLogValue(existing ? String(existing.weight) : '');
+      setWeightLogErr('');
+      setShowWeightLogModal(true);
+    } else {
+      // Future date → cycle editor as before
+      setSelectedDate(date);
+    }
+  }
+
+  function confirmWeightLog() {
+    const w = parseFloat(weightLogValue);
+    if (!w || w < 50 || w > 500) { setWeightLogErr('Please enter a valid weight (lbs).'); return; }
+    const key = toKey(weightLogDate);
+    const existing = (nutrition.weightLog ?? []).filter((e) => e.date !== key);
+    setNutrition((prev) => ({
+      ...prev,
+      weightLog: [...existing, { date: key, weight: w }].sort((a, b) => a.date.localeCompare(b.date)),
+    }));
+    setShowWeightLogModal(false);
+    setWeightLogDate(null);
+    setWeightLogValue('');
+  }
+
+  function deleteWeightLog() {
+    const key = toKey(weightLogDate);
+    setNutrition((prev) => ({
+      ...prev,
+      weightLog: (prev.weightLog ?? []).filter((e) => e.date !== key),
+    }));
+    setShowWeightLogModal(false);
   }
 
   function handleDropletClick(e, date) {
@@ -1612,12 +1653,15 @@ export default function NutritionPage({ athlete, nutrition, setNutrition, goToSc
                     className={cellClass}
                     onClick={() => handleDayClick(date)}
                     role="button"
-                    tabIndex={isPast || !showBulkCut ? -1 : 0}
-                    onKeyDown={(e) => e.key === 'Enter' && !isPast && showBulkCut && handleDayClick(date)}
+                    tabIndex={!showBulkCut ? -1 : 0}
+                    onKeyDown={(e) => e.key === 'Enter' && showBulkCut && handleDayClick(date)}
                   >
                     <span className="nutr-day-num">{date.getDate()}</span>
                     {b && <span className="nutr-day-tag">{b.type}</span>}
                     {isToday && <span className="nutr-today-dot" />}
+                    {(nutrition.weightLog ?? []).some((e) => e.date === key) && (
+                      <span style={{ position:'absolute', top:4, right:4, width:5, height:5, borderRadius:'50%', background:'#8f7cff', boxShadow:'0 0 6px rgba(143,124,255,0.8)' }} />
+                    )}
 
                     {trackPeriod && (
                       <button
@@ -1794,6 +1838,40 @@ export default function NutritionPage({ athlete, nutrition, setNutrition, goToSc
             </div>
           )}
         </div>
+
+        {/* ── Weight log modal — click any past/today date ── */}
+        {showWeightLogModal && weightLogDate && (
+          <div style={styles.modalOverlay} onClick={() => setShowWeightLogModal(false)}>
+            <div style={{ ...styles.modalBox, maxWidth: 340 }} onClick={(e) => e.stopPropagation()}>
+              <div style={styles.modalHeader}>
+                <span style={styles.modalTitle}>
+                  Log weight · {weightLogDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                </span>
+                <button style={styles.modalClose} onClick={() => setShowWeightLogModal(false)}>×</button>
+              </div>
+              <div style={{ padding: '16px 20px 20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div style={styles.wmHint}>
+                  Enter your weight for this day. It will appear on your trend graph.
+                </div>
+                <input
+                  style={styles.addInput}
+                  type="number"
+                  min="50" max="500"
+                  placeholder="e.g. 143.5"
+                  value={weightLogValue}
+                  onChange={(e) => { setWeightLogValue(e.target.value); setWeightLogErr(''); }}
+                  onKeyDown={(e) => e.key === 'Enter' && confirmWeightLog()}
+                  autoFocus
+                />
+                {weightLogErr && <div style={styles.errorText}>{weightLogErr}</div>}
+                <button style={styles.addBtn} onClick={confirmWeightLog}>Save weight</button>
+                {(nutrition.weightLog ?? []).some((e) => e.date === toKey(weightLogDate)) && (
+                  <button style={styles.aiRetryBtn} onClick={deleteWeightLog}>Remove this entry</button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* ─── NEW: Calorie Tracker ─── */}
         <CalorieTracker
