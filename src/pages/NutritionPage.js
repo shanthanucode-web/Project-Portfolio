@@ -438,24 +438,28 @@ function AiMealEstimator({ onAdd }) {
     setResult(null);
     setError('');
     try {
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 300,
-          system: `You are a precise nutrition estimator. When given a food or meal description, respond ONLY with a JSON object (no markdown, no extra text) in this exact format:
+      const res = await fetch('/api/openai', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    model: 'gpt-4o-mini',
+    max_tokens: 300,
+    messages: [
+      {
+        role: 'system',
+        content: `You are a precise nutrition estimator. When given a food or meal description, respond ONLY with a JSON object (no markdown, no extra text) in this exact format:
 {"name":"<short meal name>","cals":<integer>,"protein":<integer grams>,"carbs":<integer grams>,"fat":<integer grams>,"note":"<one short sentence about accuracy or assumptions>"}
 Use realistic research-backed values. For fast food use actual published nutrition data. For home-cooked meals use standard portion sizes. Always return integers for numeric fields.`,
-          messages: [{ role: 'user', content: query.trim() }],
-        }),
-      });
-      const data = await res.json();
-      const text = data.content?.find((b) => b.type === 'text')?.text || '';
-      const clean = text.replace(/```json|```/g, '').trim();
-      const parsed = JSON.parse(clean);
-      if (!parsed.cals || !parsed.name) throw new Error('bad response');
-      setResult(parsed);
+      },
+      { role: 'user', content: query.trim() },
+    ],
+  }),
+});
+const data = await res.json();
+const clean = (data.output || '').replace(/```json|```/g, '').trim();
+const parsed = JSON.parse(clean);
+if (!parsed.cals || !parsed.name) throw new Error('bad response');
+setResult(parsed);
     } catch {
       setError('Could not estimate — try rephrasing (e.g. "Big Mac meal large size").');
     } finally {
