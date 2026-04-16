@@ -323,7 +323,7 @@ function MacroBar({ label, consumed, goal, color }) {
 }
 
 /* ─── NEW: Calorie calculator helper ─── */
-function calcDailyCalories(athlete, cycleType) {
+function calcDailyCalories(athlete, cycleType, goalWeight) {
   // Mifflin-St Jeor BMR
   const weightKg = (athlete.bodyweight || 130) * 0.453592;
   const heightCm = ((athlete.heightFt || 5) * 12 + (athlete.heightIn || 4)) * 2.54;
@@ -340,10 +340,19 @@ function calcDailyCalories(athlete, cycleType) {
   // Moderate activity multiplier (3-5 days/week lifting)
   const tdee = Math.round(bmr * 1.55);
 
-  // Adjust for cycle type
-  if (cycleType === 'bulk') return tdee + 300;
-  if (cycleType === 'cut') return tdee - 300;
-  return tdee; // maintain or none
+  // Base cycle adjustment
+  let base = tdee;
+  if (cycleType === 'bulk') base = tdee + 300;
+  else if (cycleType === 'cut') base = tdee - 300;
+
+  // Goal weight nudge: if far from goal, add up to ±100 extra cals
+  if (goalWeight && athlete.bodyweight) {
+    const diff = goalWeight - athlete.bodyweight;
+    const nudge = Math.min(Math.abs(diff) * 5, 100) * Math.sign(diff);
+    base = Math.round(base + nudge);
+  }
+
+  return base;
 }
 
 /* ─── NEW: Calorie Ring SVG ─── */
@@ -438,28 +447,24 @@ function AiMealEstimator({ onAdd }) {
     setResult(null);
     setError('');
     try {
-      const res = await fetch('/api/openai', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({
-    model: 'gpt-4o-mini',
-    max_tokens: 300,
-    messages: [
-      {
-        role: 'system',
-        content: `You are a precise nutrition estimator. When given a food or meal description, respond ONLY with a JSON object (no markdown, no extra text) in this exact format:
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 300,
+          system: `You are a precise nutrition estimator. When given a food or meal description, respond ONLY with a JSON object (no markdown, no extra text) in this exact format:
 {"name":"<short meal name>","cals":<integer>,"protein":<integer grams>,"carbs":<integer grams>,"fat":<integer grams>,"note":"<one short sentence about accuracy or assumptions>"}
 Use realistic research-backed values. For fast food use actual published nutrition data. For home-cooked meals use standard portion sizes. Always return integers for numeric fields.`,
-      },
-      { role: 'user', content: query.trim() },
-    ],
-  }),
-});
-const data = await res.json();
-const clean = (data.output || '').replace(/```json|```/g, '').trim();
-const parsed = JSON.parse(clean);
-if (!parsed.cals || !parsed.name) throw new Error('bad response');
-setResult(parsed);
+          messages: [{ role: 'user', content: query.trim() }],
+        }),
+      });
+      const data = await res.json();
+      const text = data.content?.find((b) => b.type === 'text')?.text || '';
+      const clean = text.replace(/```json|```/g, '').trim();
+      const parsed = JSON.parse(clean);
+      if (!parsed.cals || !parsed.name) throw new Error('bad response');
+      setResult(parsed);
     } catch {
       setError('Could not estimate — try rephrasing (e.g. "Big Mac meal large size").');
     } finally {
@@ -555,8 +560,326 @@ setResult(parsed);
   );
 }
 
+/* ─── Weigh-In Inline Editor (shown in sidebar when a cycle is active) ─── */
+function WeighInEditor({ nutrition, setNutrition, athlete }) {
+  const todayKey = toKey(new Date());
+  const weightLog = nutrition.weightLog ?? [];
+  const goalWeight = nutrition.goalWeight ?? '';
+  const todayLogged = weightLog.find((e) => e.date === todayKey);
+
+  const [editWeight, setEditWeight] = useState('');
+  const [editGoal, setEditGoal] = useState(String(goalWeight));
+  const [saved, setSaved] = useState(false);
+
+  // Determine if weigh-in is due based on progressLogFrequency
+  const freq = athlete?.progressLogFrequency ?? 'weekly';
+  const freqDays = freq === 'daily' ? 1 : freq === 'biweekly' ? 14 : 7;
+  const lastLog = weightLog.length > 0 ? weightLog[weightLog.length - 1] : null;
+  const daysSinceLast = lastLog
+    ? Math.round((new Date() - fromKey(lastLog.date)) / 86400000)
+    : 999;
+  const isDue = daysSinceLast >= freqDays;
+
+  function logWeight() {
+    const w = parseFloat(editWeight);
+    if (!w || w < 50 || w > 500) return;
+    const gw = parseFloat(editGoal) || nutrition.goalWeight;
+    const existing = weightLog.filter((e) => e.date !== todayKey);
+    setNutrition((prev) => ({
+      ...prev,
+      goalWeight: gw || prev.goalWeight,
+      weightLog: [...existing, { date: todayKey, weight: w }].sort((a, b) => a.date.localeCompare(b.date)),
+    }));
+    setEditWeight('');
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2500);
+  }
+
+  return (
+    <div style={wStyles.wrap}>
+      <div style={wStyles.header}>
+        <span style={wStyles.title}>⚖️ Weight tracking</span>
+        {isDue && !todayLogged && <span style={wStyles.dueBadge}>Weigh-in due</span>}
+      </div>
+
+      {todayLogged && !saved && (
+        <div style={wStyles.todayRow}>
+          <span style={wStyles.todayLabel}>Today</span>
+          <span style={wStyles.todayVal}>{todayLogged.weight} lbs</span>
+        </div>
+      )}
+
+      {saved && <div style={wStyles.savedMsg}>✓ Logged!</div>}
+
+      <div style={wStyles.inputRow}>
+        <input
+          style={wStyles.smallInput}
+          type="number"
+          min="50" max="500"
+          placeholder="Current (lbs)"
+          value={editWeight}
+          onChange={(e) => setEditWeight(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && logWeight()}
+        />
+        <input
+          style={wStyles.smallInput}
+          type="number"
+          min="50" max="500"
+          placeholder="Goal (lbs)"
+          value={editGoal}
+          onChange={(e) => setEditGoal(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && logWeight()}
+        />
+        <button style={wStyles.logBtn} onClick={logWeight}>Log</button>
+      </div>
+
+      {lastLog && (
+        <div style={wStyles.lastLog}>
+          Last logged: {lastLog.weight} lbs on {fmtShort(fromKey(lastLog.date))}
+          {' · '}next due in {Math.max(0, freqDays - daysSinceLast)}d
+        </div>
+      )}
+    </div>
+  );
+}
+
+const wStyles = {
+  wrap: {
+    marginTop: 14,
+    padding: '12px 14px',
+    borderRadius: 16,
+    background: 'rgba(255,255,255,0.05)',
+    border: '1px solid rgba(255,255,255,0.1)',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 8,
+  },
+  header: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 },
+  title: { fontSize: '0.8rem', fontWeight: 700, color: 'rgba(247,249,255,0.8)' },
+  dueBadge: {
+    fontSize: '0.64rem', fontWeight: 800, padding: '3px 8px', borderRadius: 999,
+    background: 'rgba(255,216,77,0.15)', border: '1px solid rgba(255,216,77,0.3)', color: '#ffd84d',
+    textTransform: 'uppercase', letterSpacing: '0.08em',
+  },
+  todayRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
+  todayLabel: { fontSize: '0.74rem', color: 'rgba(216,226,255,0.5)', fontWeight: 600 },
+  todayVal: { fontSize: '0.86rem', fontWeight: 700, color: '#57f0c0' },
+  savedMsg: { fontSize: '0.78rem', fontWeight: 700, color: '#57f0c0' },
+  inputRow: { display: 'flex', gap: 6, alignItems: 'center' },
+  smallInput: {
+    flex: 1,
+    minHeight: 36,
+    borderRadius: 10,
+    padding: '0 10px',
+    background: 'rgba(255,255,255,0.08)',
+    border: '1px solid rgba(255,255,255,0.12)',
+    color: '#f7f9ff',
+    fontSize: '0.78rem',
+    fontWeight: 600,
+    outline: 'none',
+    fontFamily: "'Inter', sans-serif",
+    minWidth: 0,
+  },
+  logBtn: {
+    minHeight: 36,
+    padding: '0 12px',
+    borderRadius: 10,
+    background: 'linear-gradient(135deg,#fff4b0,#ffd84d 30%,#fff 60%,#c6deff)',
+    color: '#06101f',
+    fontSize: '0.78rem',
+    fontWeight: 800,
+    cursor: 'pointer',
+    border: 'none',
+    whiteSpace: 'nowrap',
+    flexShrink: 0,
+  },
+  lastLog: { fontSize: '0.68rem', color: 'rgba(216,226,255,0.4)', fontWeight: 600 },
+};
+
+/* ─── Weight Trend Graph ─── */
+function WeightTrendGraph({ weightLog, goalWeight, athlete }) {
+  if (weightLog.length === 0) {
+    return (
+      <div style={gStyles.emptyWrap}>
+        <div style={gStyles.emptyTitle}>📈 Weight trend</div>
+        <div style={gStyles.emptyMsg}>Log your first weigh-in by applying a cycle — your progress graph will appear here.</div>
+      </div>
+    );
+  }
+
+  const W = 600, H = 200, PAD = { top: 20, right: 20, bottom: 36, left: 44 };
+  const innerW = W - PAD.left - PAD.right;
+  const innerH = H - PAD.top - PAD.bottom;
+
+  const weights = weightLog.map((e) => e.weight);
+  const allWeights = goalWeight ? [...weights, goalWeight] : weights;
+  const minW = Math.min(...allWeights) - 5;
+  const maxW = Math.max(...allWeights) + 5;
+
+  const n = weightLog.length;
+  const xScale = (i) => PAD.left + (n === 1 ? innerW / 2 : (i / (n - 1)) * innerW);
+  const yScale = (w) => PAD.top + innerH - ((w - minW) / (maxW - minW)) * innerH;
+
+  const points = weightLog.map((e, i) => ({ x: xScale(i), y: yScale(e.weight), ...e }));
+  const polyline = points.map((p) => `${p.x},${p.y}`).join(' ');
+
+  // Area fill path
+  const areaPath = points.length > 1
+    ? `M ${points[0].x},${PAD.top + innerH} ` +
+      points.map((p) => `L ${p.x},${p.y}`).join(' ') +
+      ` L ${points[points.length - 1].x},${PAD.top + innerH} Z`
+    : '';
+
+  // Y axis ticks
+  const yTicks = 4;
+  const yTickVals = Array.from({ length: yTicks + 1 }, (_, i) => minW + ((maxW - minW) / yTicks) * i);
+
+  // Goal weight Y
+  const goalY = goalWeight ? yScale(goalWeight) : null;
+
+  // Trend: up/down/flat
+  const trend = weights.length >= 2
+    ? weights[weights.length - 1] - weights[0]
+    : 0;
+  const trendColor = trend < -0.5 ? '#57f0c0' : trend > 0.5 ? '#57a5ff' : '#ffd84d';
+  const trendLabel = trend < -0.5 ? `↓ ${Math.abs(trend).toFixed(1)} lbs` : trend > 0.5 ? `↑ ${trend.toFixed(1)} lbs` : '→ stable';
+
+  return (
+    <div style={gStyles.wrap}>
+      <div style={gStyles.header}>
+        <div>
+          <div style={gStyles.title}>📈 Weight trend</div>
+          <div style={gStyles.sub}>{weightLog.length} weigh-in{weightLog.length !== 1 ? 's' : ''} logged</div>
+        </div>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+          {goalWeight && (
+            <div style={gStyles.goalChip}>
+              <span style={gStyles.goalDash}>- - -</span>
+              Goal: {goalWeight} lbs
+            </div>
+          )}
+          <div style={{ ...gStyles.trendChip, color: trendColor, borderColor: trendColor + '44', background: trendColor + '18' }}>
+            {trendLabel}
+          </div>
+        </div>
+      </div>
+
+      <div style={{ overflowX: 'auto' }}>
+        <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', minWidth: 300, display: 'block' }}>
+          {/* Y grid lines + labels */}
+          {yTickVals.map((v, i) => (
+            <g key={i}>
+              <line
+                x1={PAD.left} y1={yScale(v)} x2={PAD.left + innerW} y2={yScale(v)}
+                stroke="rgba(255,255,255,0.06)" strokeWidth="1"
+              />
+              <text x={PAD.left - 6} y={yScale(v) + 4} textAnchor="end"
+                fill="rgba(216,226,255,0.35)" fontSize="9" fontFamily="Inter,sans-serif">
+                {Math.round(v)}
+              </text>
+            </g>
+          ))}
+
+          {/* Area fill */}
+          {areaPath && (
+            <path d={areaPath} fill="url(#wGrad)" opacity="0.18" />
+          )}
+
+          {/* Gradient def */}
+          <defs>
+            <linearGradient id="wGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#8f7cff" />
+              <stop offset="100%" stopColor="#8f7cff" stopOpacity="0" />
+            </linearGradient>
+          </defs>
+
+          {/* Goal weight dashed line */}
+          {goalY !== null && (
+            <g>
+              <line
+                x1={PAD.left} y1={goalY} x2={PAD.left + innerW} y2={goalY}
+                stroke="#ffd84d" strokeWidth="1.5" strokeDasharray="6 4" opacity="0.7"
+              />
+              <text x={PAD.left + innerW + 4} y={goalY + 4}
+                fill="#ffd84d" fontSize="9" fontFamily="Inter,sans-serif" opacity="0.8">
+                goal
+              </text>
+            </g>
+          )}
+
+          {/* Line */}
+          {points.length > 1 && (
+            <polyline
+              points={polyline}
+              fill="none"
+              stroke="#8f7cff"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          )}
+
+          {/* Dots + X labels */}
+          {points.map((p, i) => (
+            <g key={i}>
+              <circle cx={p.x} cy={p.y} r="4" fill="#8f7cff" stroke="rgba(10,16,36,0.9)" strokeWidth="2" />
+              <text x={p.x} y={PAD.top + innerH + 16} textAnchor="middle"
+                fill="rgba(216,226,255,0.4)" fontSize="8.5" fontFamily="Inter,sans-serif">
+                {fmtShort(fromKey(p.date))}
+              </text>
+              {/* Tooltip weight label on hover approximated as always-shown for latest */}
+              {i === points.length - 1 && (
+                <text x={p.x} y={p.y - 9} textAnchor="middle"
+                  fill="#f7f9ff" fontSize="10" fontWeight="700" fontFamily="Inter,sans-serif">
+                  {p.weight}
+                </text>
+              )}
+            </g>
+          ))}
+        </svg>
+      </div>
+    </div>
+  );
+}
+
+const gStyles = {
+  wrap: {
+    marginTop: 18,
+    paddingTop: 16,
+    borderTop: '1px solid rgba(255,255,255,0.08)',
+  },
+  emptyWrap: {
+    marginTop: 16,
+    borderRadius: 24,
+    padding: '22px 20px',
+    background: 'rgba(255,255,255,0.04)',
+    border: '1px solid rgba(255,255,255,0.08)',
+    textAlign: 'center',
+  },
+  emptyTitle: {
+    fontFamily: "'Space Grotesk',sans-serif",
+    fontSize: '0.95rem', fontWeight: 700, color: '#f7f9ff', marginBottom: 8,
+  },
+  emptyMsg: { fontSize: '0.8rem', color: 'rgba(216,226,255,0.45)', fontWeight: 600, lineHeight: 1.5 },
+  header: { display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 14 },
+  title: { fontFamily: "'Space Grotesk',sans-serif", fontSize: '1rem', fontWeight: 700, color: '#f7f9ff', marginBottom: 2 },
+  sub: { fontSize: '0.72rem', fontWeight: 600, color: 'rgba(216,226,255,0.45)' },
+  goalChip: {
+    display: 'flex', alignItems: 'center', gap: 6,
+    fontSize: '0.72rem', fontWeight: 700, color: '#ffd84d',
+    padding: '4px 10px', borderRadius: 999,
+    background: 'rgba(255,216,77,0.1)', border: '1px solid rgba(255,216,77,0.22)',
+  },
+  goalDash: { letterSpacing: 1, opacity: 0.7 },
+  trendChip: {
+    fontSize: '0.74rem', fontWeight: 800,
+    padding: '4px 10px', borderRadius: 999, border: '1px solid',
+  },
+  wmHint: { fontSize: '0.8rem', color: 'rgba(216,226,255,0.5)', fontWeight: 600, lineHeight: 1.5 },
+};
+
 /* ─── NEW: Calorie Tracker Component ─── */
-function CalorieTracker({ athlete, cycleType }) {
+function CalorieTracker({ athlete, cycleType, goalWeight }) {
   const todayKey = toKey(new Date());
   const storageKey = `calorie-meals-${todayKey}`;
 
@@ -565,7 +888,7 @@ function CalorieTracker({ athlete, cycleType }) {
   });
   const [showModal, setShowModal] = useState(false);
 
-  const goal = useMemo(() => calcDailyCalories(athlete, cycleType), [athlete, cycleType]);
+  const goal = useMemo(() => calcDailyCalories(athlete, cycleType, goalWeight), [athlete, cycleType, goalWeight]);
   const consumed = useMemo(() => meals.reduce((s, m) => s + m.cals, 0), [meals]);
 
   const macroGoals = useMemo(() => ({
@@ -1106,15 +1429,43 @@ export default function NutritionPage({ athlete, nutrition, setNutrition, goToSc
     setNutrition((prev) => ({ ...prev, periodDays: [...next] }));
   }
 
+  // Weight modal state
+  const [showWeightModal, setShowWeightModal] = useState(false);
+  const [pendingCycleWeight, setPendingCycleWeight] = useState('');
+  const [pendingGoalWeight, setPendingGoalWeight] = useState('');
+  const [weightModalErr, setWeightModalErr] = useState('');
+
   function applyBlock() {
     if (!selectedDate) return;
+    // Open weight modal first — cycle saves only after weights are entered
+    setPendingCycleWeight(String(athlete?.bodyweight || ''));
+    setPendingGoalWeight(String(nutrition.goalWeight || ''));
+    setWeightModalErr('');
+    setShowWeightModal(true);
+  }
+
+  function confirmApplyBlock() {
+    const cw = parseFloat(pendingCycleWeight);
+    const gw = parseFloat(pendingGoalWeight);
+    if (!cw || cw < 50 || cw > 500) { setWeightModalErr('Please enter a valid current weight (lbs).'); return; }
+    if (!gw || gw < 50 || gw > 500) { setWeightModalErr('Please enter a valid goal weight (lbs).'); return; }
     const dur = getDur();
     const startKey = toKey(selectedDate);
     const endKey = toKey(addDays(selectedDate, dur - 1));
-    const nb = { type: activeType, start: startKey, end: endKey };
+    const nb = { type: activeType, start: startKey, end: endKey, startWeight: cw, goalWeight: gw };
     const filtered = blocks.filter((b) => nb.end < b.start || nb.start > b.end);
     const sorted = [...filtered, nb].sort((a, b) => a.start.localeCompare(b.start));
-    setNutrition((prev) => ({ ...prev, bulkCutBlocks: sorted }));
+    // Log a weigh-in entry
+    const newEntry = { date: startKey, weight: cw };
+    const existingLogs = nutrition.weightLog ?? [];
+    const dedupedLogs = existingLogs.filter((e) => e.date !== startKey);
+    setNutrition((prev) => ({
+      ...prev,
+      bulkCutBlocks: sorted,
+      goalWeight: gw,
+      weightLog: [...dedupedLogs, newEntry].sort((a, b) => a.date.localeCompare(b.date)),
+    }));
+    setShowWeightModal(false);
     setSelectedDate(null);
   }
 
@@ -1296,6 +1647,13 @@ export default function NutritionPage({ athlete, nutrition, setNutrition, goToSc
             {trackPeriod && (
               <div className="nutr-period-stats-bar">{periodStatsText}</div>
             )}
+
+            {/* Weight trend graph — shown inside the calendar card */}
+            <WeightTrendGraph
+              weightLog={nutrition.weightLog ?? []}
+              goalWeight={nutrition.goalWeight ?? null}
+              athlete={athlete}
+            />
           </div>
 
           {/* Sidebar — only when bulk/cut is enabled */}
@@ -1369,6 +1727,57 @@ export default function NutritionPage({ athlete, nutrition, setNutrition, goToSc
                     Remove cycle
                   </button>
                 )}
+
+                {/* ── Inline weight editor ── */}
+                {todayBlock && (
+                  <WeighInEditor
+                    nutrition={nutrition}
+                    setNutrition={setNutrition}
+                    athlete={athlete}
+                  />
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ── Weight modal — shown when applying a new cycle ── */}
+          {showWeightModal && (
+            <div style={styles.modalOverlay} onClick={() => setShowWeightModal(false)}>
+              <div style={{ ...styles.modalBox, maxWidth: 380 }} onClick={(e) => e.stopPropagation()}>
+                <div style={styles.modalHeader}>
+                  <span style={styles.modalTitle}>Set weights for this cycle</span>
+                  <button style={styles.modalClose} onClick={() => setShowWeightModal(false)}>×</button>
+                </div>
+                <div style={{ padding: '18px 20px 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+                  <div style={styles.wmHint}>
+                    Enter your current weight and goal weight. These will refine your daily calorie target.
+                  </div>
+                  <div>
+                    <div style={styles.customLabel}>Current weight (lbs)</div>
+                    <input
+                      style={styles.addInput}
+                      type="number"
+                      min="50" max="500"
+                      placeholder="e.g. 145"
+                      value={pendingCycleWeight}
+                      onChange={(e) => { setPendingCycleWeight(e.target.value); setWeightModalErr(''); }}
+                      autoFocus
+                    />
+                  </div>
+                  <div>
+                    <div style={styles.customLabel}>Goal weight (lbs)</div>
+                    <input
+                      style={styles.addInput}
+                      type="number"
+                      min="50" max="500"
+                      placeholder="e.g. 135"
+                      value={pendingGoalWeight}
+                      onChange={(e) => { setPendingGoalWeight(e.target.value); setWeightModalErr(''); }}
+                    />
+                  </div>
+                  {weightModalErr && <div style={styles.errorText}>{weightModalErr}</div>}
+                  <button style={styles.addBtn} onClick={confirmApplyBlock}>Save &amp; apply cycle</button>
+                </div>
               </div>
             </div>
           )}
@@ -1378,6 +1787,8 @@ export default function NutritionPage({ athlete, nutrition, setNutrition, goToSc
         <CalorieTracker
           athlete={athlete}
           cycleType={todayBlock?.type ?? null}
+          goalWeight={nutrition.goalWeight ?? null}
+          currentBlock={todayBlock ?? null}
         />
 
       </div>
