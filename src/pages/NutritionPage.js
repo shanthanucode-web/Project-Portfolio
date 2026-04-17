@@ -1434,8 +1434,10 @@ export default function NutritionPage({ athlete, nutrition, setNutrition, goToSc
   const [weightLogValue, setWeightLogValue] = useState('');
   const [weightLogErr, setWeightLogErr] = useState('');
 
+  // REPLACE with:
   function handleDayClick(date) {
-    if (showBulkCut) setSelectedDate(date);
+    const isPast = date < today;
+    if (showBulkCut && !isPast) setSelectedDate(date);
   }
 
   function confirmWeightLog() {
