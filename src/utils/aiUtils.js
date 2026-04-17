@@ -1,3 +1,4 @@
+
 const MODEL = 'gpt-4o-mini';
 
 async function askGPT(systemPrompt, userPrompt, conversationHistory = []) {

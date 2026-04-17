@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useCallback, useEffect } from 'react';
 import HomePage from './pages/HomePage';
 import CalendarPage from './pages/CalendarPage';
 import NutritionPage from './pages/NutritionPage';
@@ -6,9 +6,8 @@ import ChatPage from './pages/ChatPage';
 import ProfilePage from './pages/ProfilePage';
 import LiveWorkoutPage from './pages/LiveWorkoutPage';
 import WorkoutSummaryPage from './pages/WorkoutSummaryPage';
+import { buildSchedule } from './pages/CalendarPage';
 import './styles/globals.css';
-
-
 
 const DEFAULT_ATHLETE = {
   firstName: 'Jane',
@@ -18,27 +17,16 @@ const DEFAULT_ATHLETE = {
   bodyweight: 130,
   heightFt: 5,
   heightIn: 4,
-
   goal: 'strength',
   equipment: 'full gym',
-
   cycleTracking: false,
   considerations: '',
-
   nutritionGuidance: true,
   doesBulkCutCycles: true,
   calorieTrackingStyle: 'light',
   weightDirectionGoal: 'gain',
   progressLogFrequency: 'weekly',
 };
-
-const DEFAULT_SCHEDULE = [
-  { id: 1, day: 'Today', date: 'Apr 11', title: 'Lower Power', focus: 'Squat + posterior chain', status: 'active' },
-  { id: 2, day: 'Sun', date: 'Apr 12', title: 'Recovery', focus: 'Walk + mobility', status: 'upcoming' },
-  { id: 3, day: 'Mon', date: 'Apr 13', title: 'Bench Focus', focus: 'Bench + triceps', status: 'upcoming' },
-  { id: 4, day: 'Tue', date: 'Apr 14', title: 'Squat Volume', focus: 'Volume lower day', status: 'upcoming' },
-  { id: 5, day: 'Wed', date: 'Apr 15', title: 'Upper Pull', focus: 'Back + biceps', status: 'upcoming' },
-];
 
 const DEFAULT_NUTRITION = {
   bulkCutBlocks: [],
@@ -58,22 +46,78 @@ const DEFAULT_CHAT = [
   },
 ];
 
-const DEFAULT_WORKOUT_HISTORY = [];
-
 function App() {
   const [screen, setScreen] = useState('home');
   const [screenHistory, setScreenHistory] = useState([]);
 
   const [athlete, setAthlete] = useState(DEFAULT_ATHLETE);
-  const [schedule, setSchedule] = useState(DEFAULT_SCHEDULE);
   const [nutrition, setNutrition] = useState(DEFAULT_NUTRITION);
   const [progress, setProgress] = useState(DEFAULT_PROGRESS);
   const [chatMessages, setChatMessages] = useState(DEFAULT_CHAT);
-  const [workoutHistory, setWorkoutHistory] = useState(DEFAULT_WORKOUT_HISTORY);
+  const [workoutHistory, setWorkoutHistory] = useState([]);
+
+  // ─── Live schedule state — single source of truth ───────────────
+  // Initially built from athlete + nutrition. Can be overridden by AI chat.
+  const [calendarSchedule, setCalendarSchedule] = useState(() =>
+    buildSchedule(DEFAULT_ATHLETE, DEFAULT_NUTRITION)
+  );
+
+  // Blocked days live here at App level so chat/calendar stay in sync
+  const [blockedDays, setBlockedDays] = useState(new Set());
 
   const [activeWorkout, setActiveWorkout] = useState(null);
   const [lastWorkoutSummary, setLastWorkoutSummary] = useState(null);
 
+  // ─── Rebuild calendar when athlete profile or nutrition changes ──
+  // But preserve any AI-injected overrides (newSchedule from chat)
+  // We track whether the schedule was last set by AI or by build
+  const [scheduleSource, setScheduleSource] = useState('built'); // 'built' | 'ai'
+
+  useEffect(() => {
+    // When athlete or nutrition changes, always rebuild from source
+    // (AI override resets — profile change is more authoritative)
+    const rebuilt = buildSchedule(athlete, nutrition);
+    setCalendarSchedule(rebuilt);
+    setScheduleSource('built');
+  }, [athlete, nutrition]);
+
+  // ─── Schedule mutation from AI chat ─────────────────────────────
+  // Called by ChatPage when AI returns a newSchedule
+  const applyAISchedule = useCallback((newScheduleDays) => {
+    // newScheduleDays is the minimal format from getChatCoachReply:
+    // [{ lift, type, cal, rest }, ...] — 14 entries
+    // We need to merge with the existing schedule to fill in dates, accessories, etc.
+    const base = buildSchedule(athlete, nutrition);
+
+    const merged = base.map((day, i) => {
+      const override = newScheduleDays[i];
+      if (!override) return day;
+      return {
+        ...day,
+        lift:    override.rest ? null : (override.lift ?? day.lift),
+        type:    override.rest ? null : (override.type ?? day.type),
+        rest:    !!override.rest,
+        // Preserve accessories if same lift, clear if different
+        accessories: (override.lift && override.lift !== day.lift) ? [] : day.accessories,
+        // AI caloric delta overrides if provided
+        caloricDelta: override.cal ?? day.caloricDelta,
+      };
+    });
+
+    setCalendarSchedule(merged);
+    setScheduleSource('ai');
+  }, [athlete, nutrition]);
+
+  // ─── Block day handler (used by both calendar and chat) ──────────
+  const toggleBlockedDay = useCallback((dateKey) => {
+    setBlockedDays(prev => {
+      const next = new Set(prev);
+      next.has(dateKey) ? next.delete(dateKey) : next.add(dateKey);
+      return next;
+    });
+  }, []);
+
+  // ─── Navigation ──────────────────────────────────────────────────
   const goToScreen = (nextScreen) => {
     if (nextScreen === screen) return;
     setScreenHistory((prev) => [...prev, screen]);
@@ -82,11 +126,7 @@ function App() {
 
   const goBack = () => {
     setScreenHistory((prev) => {
-      if (prev.length === 0) {
-        setScreen('home');
-        return prev;
-      }
-
+      if (prev.length === 0) { setScreen('home'); return prev; }
       const last = prev[prev.length - 1];
       setScreen(last);
       return prev.slice(0, -1);
@@ -95,25 +135,23 @@ function App() {
 
   const canGoBack = screen !== 'home' || screenHistory.length > 0;
 
-  const athleteName = useMemo(() => {
-    return `${athlete.firstName} ${athlete.lastName}`.trim();
-  }, [athlete.firstName, athlete.lastName]);
+  const athleteName = useMemo(() =>
+    `${athlete.firstName} ${athlete.lastName}`.trim(),
+    [athlete.firstName, athlete.lastName]
+  );
 
+  // ─── Workout flow ─────────────────────────────────────────────────
   const startTodaysWorkout = () => {
-    const todayPlan = schedule[0] || {
-      title: 'Training Session',
-      focus: 'General training',
-      day: 'Today',
-      date: '',
+    const todayPlan = calendarSchedule[0] || {
+      lift: 'Training Session',
+      type: 'strength',
+      dayLabel: 'Today',
     };
-
-    const newWorkout = {
+    setActiveWorkout({
       id: Date.now(),
-      title: todayPlan.title,
-      focus: todayPlan.focus,
-      day: todayPlan.day,
-      date: todayPlan.date,
-      lift: 'Back Squat',
+      title: todayPlan.lift || 'Training Session',
+      focus: todayPlan.type || 'general',
+      lift: todayPlan.lift || 'Back Squat',
       setsPlanned: 5,
       currentSet: 1,
       repsCompleted: 0,
@@ -123,9 +161,7 @@ function App() {
       barVelocity: 0.72,
       barTilt: 1.8,
       liveCoachMessage: 'Waiting for first rep...',
-    };
-
-    setActiveWorkout(newWorkout);
+    });
     setLastWorkoutSummary(null);
     setScreenHistory((prev) => [...prev, 'home']);
     setScreen('liveWorkout');
@@ -133,7 +169,6 @@ function App() {
 
   const finishWorkout = () => {
     if (!activeWorkout) return;
-
     const summary = {
       id: activeWorkout.id,
       title: activeWorkout.title,
@@ -146,11 +181,9 @@ function App() {
       avgTilt: 1.9,
       durationSec: 1320,
       durationLabel: '22 min',
-      coachDebrief:
-        'Strong session. Bar speed stayed controlled through the middle sets and only faded slightly near the end.',
+      coachDebrief: 'Strong session. Bar speed stayed controlled through the middle sets.',
       completedAt: new Date().toISOString(),
     };
-
     setLastWorkoutSummary(summary);
     setScreenHistory((prev) => [...prev, 'liveWorkout']);
     setScreen('workoutSummary');
@@ -158,53 +191,41 @@ function App() {
 
   const logWorkout = () => {
     if (!lastWorkoutSummary) return;
-
     setWorkoutHistory((prev) => [lastWorkoutSummary, ...prev]);
-
     setProgress((prev) => ({
       ...prev,
       squat: [...prev.squat, Math.min(prev.squat[prev.squat.length - 1] + 5, 999)],
     }));
-
-    setChatMessages((prev) => [
-      {
-        id: Date.now(),
-        role: 'assistant',
-        text: `Logged ${lastWorkoutSummary.lift}. Nice work — ${lastWorkoutSummary.coachDebrief}`,
-      },
-      ...prev,
-    ]);
-
+    setChatMessages((prev) => [{
+      id: Date.now(),
+      role: 'assistant',
+      text: `Logged ${lastWorkoutSummary.lift}. Nice work — ${lastWorkoutSummary.coachDebrief}`,
+    }, ...prev]);
     setActiveWorkout(null);
     setLastWorkoutSummary(null);
     setScreenHistory([]);
     setScreen('home');
   };
 
-  const homeSummary = useMemo(() => {
-    const today = schedule[0] || null;
-    const topInsight =
-      chatMessages.find((m) => m.role === 'assistant')?.text ||
-      'Coach insight will appear here as your training data fills in.';
-
-    return {
-      athleteName,
-      today,
-      nutritionMode: nutrition.mode,
-      nutritionAdvice: nutrition.aiAdvice,
-      topInsight,
-      progress,
-      lastWorkoutSummary,
-      workoutHistoryCount: workoutHistory.length,
-    };
-  }, [athleteName, schedule, nutrition, chatMessages, progress, lastWorkoutSummary, workoutHistory]);
+  // ─── Home summary ─────────────────────────────────────────────────
+  const homeSummary = useMemo(() => ({
+    athleteName,
+    today: calendarSchedule[0] || null,
+    nutritionMode: nutrition.mode,
+    nutritionAdvice: nutrition.aiAdvice,
+    topInsight: chatMessages.find((m) => m.role === 'assistant')?.text ||
+      'Coach insight will appear here as your training data fills in.',
+    progress,
+    lastWorkoutSummary,
+    workoutHistoryCount: workoutHistory.length,
+  }), [athleteName, calendarSchedule, nutrition, chatMessages, progress, lastWorkoutSummary, workoutHistory]);
 
   const navItems = [
-    { key: 'home', label: 'Home' },
-    { key: 'calendar', label: 'Calendar' },
+    { key: 'home',      label: 'Home'      },
+    { key: 'calendar',  label: 'Calendar'  },
     { key: 'nutrition', label: 'Nutrition' },
-    { key: 'chat', label: 'Coach' },
-    { key: 'profile', label: 'Profile' },
+    { key: 'chat',      label: 'Coach'     },
+    { key: 'profile',   label: 'Profile'   },
   ];
 
   const showTopNav = screen !== 'liveWorkout';
@@ -213,23 +234,11 @@ function App() {
     <div className="app">
       {showTopNav && (
         <div className="topnav">
-          <div className="logo">
-            <span>Coach Nova</span>
-          </div>
-
+          <div className="logo"><span>Coach Nova</span></div>
           <div className="nav-right">
-            {canGoBack && (
-              <button type="button" onClick={goBack}>
-                Back
-              </button>
-            )}
-
+            {canGoBack && <button type="button" onClick={goBack}>Back</button>}
             {navItems.map((item) => (
-              <button
-                key={item.key}
-                type="button"
-                onClick={() => goToScreen(item.key)}
-              >
+              <button key={item.key} type="button" onClick={() => goToScreen(item.key)}>
                 {item.label}
               </button>
             ))}
@@ -242,7 +251,7 @@ function App() {
           <HomePage
             summary={homeSummary}
             athlete={athlete}
-            schedule={schedule}
+            schedule={calendarSchedule}
             nutrition={nutrition}
             progress={progress}
             goToScreen={goToScreen}
@@ -253,14 +262,14 @@ function App() {
         {screen === 'calendar' && (
           <CalendarPage
             athlete={athlete}
-            schedule={schedule}
             nutrition={nutrition}
-            setSchedule={setSchedule}
+            schedule={calendarSchedule}
+            blockedDays={blockedDays}
+            onBlockToggle={toggleBlockedDay}
             goBack={goBack}
             goToScreen={goToScreen}
           />
         )}
-
 
         {screen === 'nutrition' && (
           <NutritionPage
@@ -275,10 +284,14 @@ function App() {
         {screen === 'chat' && (
           <ChatPage
             athlete={athlete}
-            schedule={schedule}
+            schedule={calendarSchedule}
             nutrition={nutrition}
             chatMessages={chatMessages}
             setChatMessages={setChatMessages}
+            workoutHistory={workoutHistory}
+            blockedDays={blockedDays}
+            onApplySchedule={applyAISchedule}
+            onBlockDay={toggleBlockedDay}
             goBack={goBack}
             goToScreen={goToScreen}
           />

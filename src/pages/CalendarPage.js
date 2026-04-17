@@ -8,16 +8,16 @@ import '../styles/calendar.css';
 const DAY_SHORT   = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
-function toKey(d) {
+export function toKey(d) {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
-function today0() {
+export function today0() {
   const d = new Date(); d.setHours(0,0,0,0); return d;
 }
-function addDays(d, n) {
+export function addDays(d, n) {
   const x = new Date(d); x.setDate(x.getDate()+n); return x;
 }
-function fromKey(k) {
+export function fromKey(k) {
   const [y, m, d] = k.split('-').map(Number);
   return new Date(y, m-1, d);
 }
@@ -26,7 +26,7 @@ function fromKey(k) {
 // WORKOUT TYPES
 // ─────────────────────────────────────────────────────────────
 
-const WORKOUT_TYPES = {
+export const WORKOUT_TYPES = {
   strength:    { label:'Strength',        color:'var(--violet)', bg:'rgba(143,124,255,0.15)', border:'rgba(143,124,255,0.35)' },
   hypertrophy: { label:'Hypertrophy',     color:'var(--blue)',   bg:'rgba(87,165,255,0.15)',  border:'rgba(87,165,255,0.35)'  },
   endurance:   { label:'Endurance',       color:'var(--cyan)',   bg:'rgba(85,214,255,0.15)',  border:'rgba(85,214,255,0.35)'  },
@@ -38,93 +38,61 @@ const WORKOUT_TYPES = {
 };
 
 // ─────────────────────────────────────────────────────────────
-// MENSTRUAL CYCLE PHASES
+// MENSTRUAL CYCLE
 // ─────────────────────────────────────────────────────────────
 
 export const CYCLE_PHASES = {
   menstrual: {
-    label: 'Menstrual',
-    color: 'var(--pink)',
-    colorRaw: '#ff6fd8',
-    days: [1,2,3,4,5],
-    intensityMod: 0.80,
-    avoidTypes: ['pr','strength'],
-    recommendedTypes: ['recovery','endurance'],
-    workoutTip: 'Reduce load ~15–20%. Prioritise upper body accessories and mobility. Avoid heavy lower-body compounds today.',
-    nutritionTip: 'Iron-rich foods and higher magnesium. Moderate carbs, stay well-hydrated. Avoid high-sodium foods.',
+    label: 'Menstrual', color: 'var(--pink)', colorRaw: '#ff6fd8',
+    days: [1,2,3,4,5], intensityMod: 0.80,
+    avoidTypes: ['pr','strength'], recommendedTypes: ['recovery','endurance'],
+    workoutTip: 'Reduce load ~15–20%. Prioritise upper body accessories and mobility.',
+    nutritionTip: 'Iron-rich foods and higher magnesium. Moderate carbs, stay well-hydrated.',
   },
   follicular: {
-    label: 'Follicular',
-    color: 'var(--mint)',
-    colorRaw: '#57f0c0',
-    days: [6,7,8,9,10,11,12,13],
-    intensityMod: 1.0,
-    avoidTypes: [],
-    recommendedTypes: ['strength','pr','hypertrophy'],
-    workoutTip: 'Best window for strength gains. Estrogen rising — push heavier weights and aim for PRs. Recovery is faster now.',
-    nutritionTip: 'High carb tolerance. Prioritise pre-workout carbs 90 min before and post-workout protein within 30 min.',
+    label: 'Follicular', color: 'var(--mint)', colorRaw: '#57f0c0',
+    days: [6,7,8,9,10,11,12,13], intensityMod: 1.0,
+    avoidTypes: [], recommendedTypes: ['strength','pr','hypertrophy'],
+    workoutTip: 'Best window for strength gains. Estrogen rising — push heavier weights.',
+    nutritionTip: 'High carb tolerance. Prioritise pre-workout carbs 90 min before.',
   },
   ovulatory: {
-    label: 'Ovulatory',
-    color: 'var(--gold)',
-    colorRaw: '#ffd84d',
-    days: [14,15,16],
-    intensityMod: 1.0,
-    avoidTypes: ['deload','recovery'],
-    recommendedTypes: ['pr','strength'],
-    workoutTip: 'Peak performance window — best time for 1RM attempts. Energy and power are at their highest. Warm up well.',
-    nutritionTip: 'Slightly elevated caloric needs. High protein supports peak output. Avoid heavy fatty foods pre-session.',
+    label: 'Ovulatory', color: 'var(--gold)', colorRaw: '#ffd84d',
+    days: [14,15,16], intensityMod: 1.0,
+    avoidTypes: ['deload','recovery'], recommendedTypes: ['pr','strength'],
+    workoutTip: 'Peak performance window — best time for 1RM attempts.',
+    nutritionTip: 'Slightly elevated caloric needs. High protein supports peak output.',
   },
   luteal_early: {
-    label: 'Luteal · Early',
-    color: 'var(--orange)',
-    colorRaw: '#ff9f63',
-    days: [17,18,19,20,21,22],
-    intensityMod: 0.92,
-    avoidTypes: ['pr'],
-    recommendedTypes: ['hypertrophy','buildup'],
-    workoutTip: 'Shift from heavy singles to volume work (4×10–12). Slight fatigue is normal — do not chase PRs this week.',
-    nutritionTip: 'Increase protein ~10%. Progesterone raises metabolism slightly. Keep carbs moderate, fats slightly higher.',
+    label: 'Luteal · Early', color: 'var(--orange)', colorRaw: '#ff9f63',
+    days: [17,18,19,20,21,22], intensityMod: 0.92,
+    avoidTypes: ['pr'], recommendedTypes: ['hypertrophy','buildup'],
+    workoutTip: 'Shift from heavy singles to volume work (4×10–12).',
+    nutritionTip: 'Increase protein ~10%. Keep carbs moderate, fats slightly higher.',
   },
   luteal_late: {
-    label: 'Luteal · Late',
-    color: 'var(--violet)',
-    colorRaw: '#8f7cff',
-    days: [23,24,25,26,27,28],
-    intensityMod: 0.80,
-    avoidTypes: ['pr','strength'],
-    recommendedTypes: ['deload','recovery','endurance'],
-    workoutTip: 'Reduce overall intensity 20–30%. Focus on technique, mobility, and low-rep accessory work. Extra rest days are fine.',
-    nutritionTip: 'Magnesium and B6 reduce PMS symptoms. Dark chocolate is legitimately helpful. Slight caloric reduction eases bloating.',
+    label: 'Luteal · Late', color: 'var(--violet)', colorRaw: '#8f7cff',
+    days: [23,24,25,26,27,28], intensityMod: 0.80,
+    avoidTypes: ['pr','strength'], recommendedTypes: ['deload','recovery','endurance'],
+    workoutTip: 'Reduce overall intensity 20–30%. Focus on technique and mobility.',
+    nutritionTip: 'Magnesium and B6 reduce PMS symptoms. Slight caloric reduction eases bloating.',
   },
 };
 
-// ─────────────────────────────────────────────────────────────
-// CYCLE INFERENCE
-// ─────────────────────────────────────────────────────────────
-
 export function inferCycleAnchor(periodDays = []) {
   if (!periodDays || periodDays.length === 0) return null;
-
   const sorted = [...periodDays].sort();
-
   const runs = [];
   let run = [sorted[0]];
   for (let i = 1; i < sorted.length; i++) {
     const prev = fromKey(run[run.length - 1]);
     const curr = fromKey(sorted[i]);
     const gap  = Math.round((curr - prev) / 86400000);
-    if (gap <= 2) {
-      run.push(sorted[i]);
-    } else {
-      runs.push(run);
-      run = [sorted[i]];
-    }
+    if (gap <= 2) run.push(sorted[i]);
+    else { runs.push(run); run = [sorted[i]]; }
   }
   runs.push(run);
-
-  const lastRun = runs[runs.length - 1];
-  return fromKey(lastRun[0]);
+  return fromKey(runs[runs.length - 1][0]);
 }
 
 export function getCyclePhase(date, anchor, cycleLen = 28) {
@@ -133,7 +101,6 @@ export function getCyclePhase(date, anchor, cycleLen = 28) {
   const a = new Date(anchor); a.setHours(0,0,0,0);
   const diff     = Math.round((d - a) / 86400000);
   const cycleDay = ((diff % cycleLen) + cycleLen) % cycleLen + 1;
-
   for (const [key, ph] of Object.entries(CYCLE_PHASES)) {
     if (ph.days.includes(cycleDay)) return { key, phase: ph, cycleDay };
   }
@@ -182,12 +149,12 @@ const ACCESSORIES = {
 function getAccessories(liftName, equipment) {
   const eq = ACCESSORIES[equipment] || ACCESSORIES['full gym'];
   const l  = (liftName || '').toLowerCase();
-  if (l.includes('squat')    && !l.includes('goblet'))               return eq.squat    || [];
-  if (l.includes('bench'))                                            return eq.bench    || [];
-  if (l.includes('deadlift') && !l.includes('romanian'))             return eq.deadlift || [];
-  if (l.includes('ohp') || l.includes('overhead') || l.includes('press')) return eq.ohp || [];
-  if (l.includes('upper'))                                            return eq.upper    || [];
-  if (l.includes('lower') || l.includes('leg'))                      return eq.lower    || [];
+  if (l.includes('squat') && !l.includes('goblet'))                    return eq.squat    || [];
+  if (l.includes('bench'))                                              return eq.bench    || [];
+  if (l.includes('deadlift') && !l.includes('romanian'))               return eq.deadlift || [];
+  if (l.includes('ohp') || l.includes('overhead') || l.includes('press')) return eq.ohp  || [];
+  if (l.includes('upper'))                                              return eq.upper    || [];
+  if (l.includes('lower') || l.includes('leg'))                        return eq.lower    || [];
   return eq.upper || [];
 }
 
@@ -273,7 +240,7 @@ function getCaloricDelta(bulkCutBlock, isRest) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// SCHEDULE BUILDER
+// SCHEDULE BUILDER  ← exported so App.jsx can call it
 // ─────────────────────────────────────────────────────────────
 
 export function buildSchedule(athlete, nutrition = {}) {
@@ -301,10 +268,7 @@ export function buildSchedule(athlete, nutrition = {}) {
     const dateKey = toKey(date);
     const p       = { ...pattern[i % pattern.length] };
 
-    const cycleInfo = (useCycle && cycleAnchor)
-      ? getCyclePhase(date, cycleAnchor)
-      : null;
-
+    const cycleInfo    = (useCycle && cycleAnchor) ? getCyclePhase(date, cycleAnchor) : null;
     const bulkCutBlock = getActiveBulkCut(date);
     const caloricDelta = getCaloricDelta(bulkCutBlock, !!p.rest);
 
@@ -321,15 +285,11 @@ export function buildSchedule(athlete, nutrition = {}) {
 
     let reason = '';
     if (p.rest) {
-      reason = 'CNS recovery day. Keep protein high and prioritise sleep. Light walking is fine.';
+      reason = 'CNS recovery day. Keep protein high and prioritise sleep.';
     } else {
       const typeLabel  = WORKOUT_TYPES[p.type]?.label || p.type;
-      const cyclePart  = cycleInfo
-        ? ` Cycle day ${cycleInfo.cycleDay} (${cycleInfo.phase.label}) — ${cycleInfo.phase.workoutTip}`
-        : '';
-      const injuryPart = athlete?.considerations
-        ? ` ⚠ ${athlete.considerations}`
-        : '';
+      const cyclePart  = cycleInfo ? ` Cycle day ${cycleInfo.cycleDay} (${cycleInfo.phase.label}) — ${cycleInfo.phase.workoutTip}` : '';
+      const injuryPart = athlete?.considerations ? ` ⚠ ${athlete.considerations}` : '';
       reason = `${typeLabel} — ${goalConfig.note}.${cyclePart}${injuryPart}`;
     }
 
@@ -342,12 +302,12 @@ export function buildSchedule(athlete, nutrition = {}) {
       nutr = cycleInfo.phase.nutritionTip;
     } else if (bulkCutBlock) {
       nutr = bulkCutBlock.type === 'bulk'
-        ? `Bulk surplus ${caloricDelta}. Pre-workout complex carbs 90 min before session.`
+        ? `Bulk surplus ${caloricDelta}. Pre-workout complex carbs 90 min before.`
         : bulkCutBlock.type === 'cut'
-        ? `Deficit day (${caloricDelta}). Keep protein high ≥${athlete?.bodyweight ?? '—'}g. Time carbs around the session.`
+        ? `Deficit day (${caloricDelta}). Keep protein high ≥${athlete?.bodyweight ?? '—'}g.`
         : 'Maintenance calories. Balanced macros around your training window.';
     } else {
-      nutr = 'No active nutrition block — set one on the Nutrition page to get daily calorie targets here.';
+      nutr = 'No active nutrition block — set one on the Nutrition page.';
     }
 
     days.push({
@@ -358,18 +318,15 @@ export function buildSchedule(athlete, nutrition = {}) {
       weekday:  date.getDay(),
       isToday:  i === 0,
       dayLabel: `${DAY_SHORT[date.getDay()]} ${MONTH_NAMES[date.getMonth()]} ${date.getDate()}`,
-
-      lift:        p.lift     || null,
-      type:        p.type     || null,
-      baseKey:     p.baseKey  || null,
+      lift:        p.lift    || null,
+      type:        p.type    || null,
+      baseKey:     p.baseKey || null,
       rest:        !!p.rest,
       accessories,
       reason,
       nutr,
-
       bulkCutBlock,
       caloricDelta,
-
       cycleInfo,
       cycleOptIn:   useCycle,
       hasCycleData: useCycle && cycleAnchor !== null,
@@ -437,7 +394,7 @@ BLOCKED DAYS THIS 2-WEEK WINDOW: ${blockedDays}`;
 }
 
 // ─────────────────────────────────────────────────────────────
-// AI CALL
+// AI CALL  (kept for the AI insight panel)
 // ─────────────────────────────────────────────────────────────
 
 async function askGPT(systemPrompt, userPrompt) {
@@ -476,10 +433,7 @@ function CyclePhasePill({ cycleInfo }) {
   if (!cycleInfo) return null;
   const { phase, cycleDay } = cycleInfo;
   return (
-    <span
-      className="cal-cycle-pill"
-      style={{ color:phase.color, borderColor:phase.colorRaw+'55', background:phase.colorRaw+'1a' }}
-    >
+    <span className="cal-cycle-pill" style={{ color:phase.color, borderColor:phase.colorRaw+'55', background:phase.colorRaw+'1a' }}>
       {phase.label} · D{cycleDay}
       {phase.intensityMod < 1 && ` · ×${phase.intensityMod}`}
     </span>
@@ -509,7 +463,6 @@ function BulkCutPill({ bulkCutBlock, caloricDelta }) {
 function ContextBanners({ todayCycle, todayBlock, athlete, hasCycleData, useCycle }) {
   return (
     <div className="cal-context-banners">
-
       {todayBlock ? (
         <div className={`cal-banner cal-banner-${todayBlock.type}`}>
           <div className="cal-banner-icon">
@@ -543,18 +496,10 @@ function ContextBanners({ todayCycle, todayBlock, athlete, hasCycleData, useCycl
       )}
 
       {useCycle && hasCycleData && todayCycle && (
-        <div
-          className="cal-banner cal-banner-cycle"
-          style={{
-            borderColor: todayCycle.phase.colorRaw + '44',
-            background:  todayCycle.phase.colorRaw + '0e',
-          }}
-        >
+        <div className="cal-banner cal-banner-cycle" style={{ borderColor: todayCycle.phase.colorRaw+'44', background: todayCycle.phase.colorRaw+'0e' }}>
           <div className="cal-banner-icon" style={{ color: todayCycle.phase.color }}>◉</div>
           <div className="cal-banner-body">
-            <div className="cal-banner-label" style={{ color: todayCycle.phase.color }}>
-              Cycle phase today
-            </div>
+            <div className="cal-banner-label" style={{ color: todayCycle.phase.color }}>Cycle phase today</div>
             <div className="cal-banner-title" style={{ color: todayCycle.phase.color }}>
               {todayCycle.phase.label}
               <span className="cal-banner-cycle-day"> · day {todayCycle.cycleDay} of 28</span>
@@ -562,14 +507,7 @@ function ContextBanners({ todayCycle, todayBlock, athlete, hasCycleData, useCycl
           </div>
           <div className="cal-banner-right">
             {todayCycle.phase.intensityMod < 1 && (
-              <div
-                className="cal-banner-chip"
-                style={{
-                  color: todayCycle.phase.color,
-                  borderColor: todayCycle.phase.colorRaw + '55',
-                  background:  todayCycle.phase.colorRaw + '15',
-                }}
-              >
+              <div className="cal-banner-chip" style={{ color: todayCycle.phase.color, borderColor: todayCycle.phase.colorRaw+'55', background: todayCycle.phase.colorRaw+'15' }}>
                 Intensity ×{todayCycle.phase.intensityMod} today
               </div>
             )}
@@ -584,7 +522,7 @@ function ContextBanners({ todayCycle, todayBlock, athlete, hasCycleData, useCycl
           <div className="cal-banner-body">
             <div className="cal-banner-label">Cycle tracking is on</div>
             <div className="cal-banner-setup-text">
-              Log period days on the Nutrition page — your calendar will automatically adjust workout intensity and type to each phase.
+              Log period days on the Nutrition page — your calendar will automatically adjust workout intensity.
             </div>
           </div>
         </div>
@@ -599,13 +537,30 @@ function ContextBanners({ todayCycle, todayBlock, athlete, hasCycleData, useCycl
           </div>
         </div>
       )}
-
     </div>
   );
 }
 
 // ─────────────────────────────────────────────────────────────
-// DAY MODAL  ← fix: athlete is now a named prop
+// AI SOURCE BADGE  ← shown when schedule was set by AI chat
+// ─────────────────────────────────────────────────────────────
+
+function AISourceBadge() {
+  return (
+    <div style={{
+      display: 'inline-flex', alignItems: 'center', gap: 6,
+      padding: '4px 12px', borderRadius: 999, marginBottom: 12,
+      background: 'rgba(143,124,255,0.12)',
+      border: '1px solid rgba(143,124,255,0.3)',
+      fontSize: '0.72rem', fontWeight: 700, color: 'var(--violet)',
+    }}>
+      <span>✦</span> Schedule customised by Coach Nova
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// DAY MODAL
 // ─────────────────────────────────────────────────────────────
 
 function DayModal({ day, athlete, onClose, onBlock, onStartLift, onToggleAcc, accDone }) {
@@ -615,58 +570,33 @@ function DayModal({ day, athlete, onClose, onBlock, onStartLift, onToggleAcc, ac
   const doneCount = Object.values(dayAcc).filter(Boolean).length;
 
   return (
-    <div
-      className="cal-modal-overlay"
-      onClick={e => e.target.classList.contains('cal-modal-overlay') && onClose()}
-    >
+    <div className="cal-modal-overlay" onClick={e => e.target.classList.contains('cal-modal-overlay') && onClose()}>
       <div className="cal-modal">
-
-        {/* Header */}
         <div className="cal-modal-head">
           <div>
             <div className="cal-modal-date">
               {day.dayLabel}
               {day.isToday && <span className="cal-today-tag">Today</span>}
             </div>
-            <div className="cal-modal-title">
-              {day.rest ? 'Rest Day' : (day.lift || '—')}
-            </div>
+            <div className="cal-modal-title">{day.rest ? 'Rest Day' : (day.lift || '—')}</div>
           </div>
           <button className="cal-modal-close" onClick={onClose}>✕</button>
         </div>
 
-        {/* Badge row */}
         <div className="cal-modal-badges">
           {wt && <WorkoutTypePill type={day.type} />}
           {day.cycleOptIn && <CyclePhasePill cycleInfo={day.cycleInfo} />}
           {!day.rest && <BulkCutPill bulkCutBlock={day.bulkCutBlock} caloricDelta={day.caloricDelta} />}
         </div>
 
-        {/* Cycle phase insight */}
         {day.cycleOptIn && day.cycleInfo && (
-          <div
-            className="cal-modal-section cal-modal-section-cycle"
-            style={{
-              borderColor: day.cycleInfo.phase.colorRaw + '44',
-              background:  day.cycleInfo.phase.colorRaw + '0d',
-            }}
-          >
-            <div
-              className="cal-modal-section-label"
-              style={{ color: day.cycleInfo.phase.color }}
-            >
+          <div className="cal-modal-section cal-modal-section-cycle" style={{ borderColor: day.cycleInfo.phase.colorRaw+'44', background: day.cycleInfo.phase.colorRaw+'0d' }}>
+            <div className="cal-modal-section-label" style={{ color: day.cycleInfo.phase.color }}>
               {day.cycleInfo.phase.label} · Cycle day {day.cycleInfo.cycleDay}
             </div>
             <p className="cal-modal-body">{day.cycleInfo.phase.workoutTip}</p>
             {day.cycleInfo.phase.intensityMod < 1 && (
-              <div
-                className="cal-intensity-chip"
-                style={{
-                  color: day.cycleInfo.phase.color,
-                  borderColor: day.cycleInfo.phase.colorRaw + '55',
-                  background:  day.cycleInfo.phase.colorRaw + '12',
-                }}
-              >
+              <div className="cal-intensity-chip" style={{ color: day.cycleInfo.phase.color, borderColor: day.cycleInfo.phase.colorRaw+'55', background: day.cycleInfo.phase.colorRaw+'12' }}>
                 Target intensity: ~{Math.round(day.cycleInfo.phase.intensityMod * 100)}% of normal working weights
               </div>
             )}
@@ -677,7 +607,6 @@ function DayModal({ day, athlete, onClose, onBlock, onStartLift, onToggleAcc, ac
           </div>
         )}
 
-        {/* Bulk / cut block detail */}
         {day.bulkCutBlock && (
           <div className={`cal-modal-section cal-modal-nutr-${day.bulkCutBlock.type}`}>
             <div className={`cal-modal-section-label cal-nutr-label-${day.bulkCutBlock.type}`}>
@@ -688,13 +617,11 @@ function DayModal({ day, athlete, onClose, onBlock, onStartLift, onToggleAcc, ac
           </div>
         )}
 
-        {/* Why scheduled */}
         <div className="cal-modal-section">
           <div className="cal-modal-section-label">Why this is scheduled</div>
           <p className="cal-modal-body">{day.reason}</p>
         </div>
 
-        {/* Nutrition fallback */}
         {!day.bulkCutBlock && !day.cycleInfo && (
           <div className="cal-modal-section">
             <div className="cal-modal-section-label">Nutrition today</div>
@@ -702,27 +629,18 @@ function DayModal({ day, athlete, onClose, onBlock, onStartLift, onToggleAcc, ac
           </div>
         )}
 
-        {/* Accessories */}
         {accs.length > 0 && (
           <div className="cal-modal-section">
             <div className="cal-modal-section-label-row">
-              <span className="cal-modal-section-label">
-                Accessories · {athlete?.equipment || 'full gym'}
-              </span>
+              <span className="cal-modal-section-label">Accessories · {athlete?.equipment || 'full gym'}</span>
               <span className="cal-modal-acc-count">{doneCount}/{accs.length} done</span>
             </div>
             <div className="cal-modal-acc-list">
               {accs.map((acc, idx) => {
                 const done = !!dayAcc[idx];
                 return (
-                  <div
-                    key={idx}
-                    className={`cal-acc-row ${done ? 'cal-acc-done' : ''}`}
-                    onClick={() => onToggleAcc(day.dateKey, idx)}
-                  >
-                    <div className={`cal-acc-check ${done ? 'cal-acc-check-done' : ''}`}>
-                      {done ? '✓' : ''}
-                    </div>
+                  <div key={idx} className={`cal-acc-row ${done ? 'cal-acc-done' : ''}`} onClick={() => onToggleAcc(day.dateKey, idx)}>
+                    <div className={`cal-acc-check ${done ? 'cal-acc-check-done' : ''}`}>{done ? '✓' : ''}</div>
                     <div className="cal-acc-info">
                       <div className="cal-acc-name">{acc.name}</div>
                       <div className="cal-acc-muscle">{acc.muscle}</div>
@@ -735,7 +653,6 @@ function DayModal({ day, athlete, onClose, onBlock, onStartLift, onToggleAcc, ac
           </div>
         )}
 
-        {/* Actions */}
         <div className="cal-modal-actions">
           <button className="cal-modal-btn cal-modal-btn-ghost" onClick={onClose}>Close</button>
           <button className="cal-modal-btn cal-modal-btn-block" onClick={() => { onBlock(day.dateKey); onClose(); }}>
@@ -782,10 +699,17 @@ function AIInsightPanel({ athlete, schedule, blockedDays, nutrition }) {
     if (!hasFetched.current) { hasFetched.current = true; runFetch(); }
   }, [runFetch]);
 
-  const dotColors = ['var(--mint)', 'var(--blue)', 'var(--orange)'];
+  // Refresh insight when schedule changes significantly
+  useEffect(() => {
+    if (hasFetched.current && schedule.length > 0) {
+      runFetch();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [schedule]);
 
-  const todayDay   = schedule[0];
-  const blockType  = todayDay?.bulkCutBlock?.type;
+  const dotColors = ['var(--mint)', 'var(--blue)', 'var(--orange)'];
+  const todayDay  = schedule[0];
+  const blockType = todayDay?.bulkCutBlock?.type;
   const cyclePhase = todayDay?.cycleInfo?.phase;
 
   return (
@@ -807,19 +731,12 @@ function AIInsightPanel({ athlete, schedule, blockedDays, nutrition }) {
           </span>
         )}
         {cyclePhase && (
-          <span
-            className="cal-ai-ctx-chip"
-            style={{
-              color: cyclePhase.color,
-              borderColor: cyclePhase.colorRaw + '44',
-              background:  cyclePhase.colorRaw + '12',
-            }}
-          >
+          <span className="cal-ai-ctx-chip" style={{ color: cyclePhase.color, borderColor: cyclePhase.colorRaw+'44', background: cyclePhase.colorRaw+'12' }}>
             {cyclePhase.label}
           </span>
         )}
         {athlete?.considerations && (
-          <span className="cal-ai-ctx-chip cal-ai-ctx-warn">⚠ Injury / consideration</span>
+          <span className="cal-ai-ctx-chip cal-ai-ctx-warn">⚠ {athlete.considerations.slice(0, 25)}{athlete.considerations.length > 25 ? '…' : ''}</span>
         )}
         {!blockType && !cyclePhase && !athlete?.considerations && (
           <span className="cal-ai-ctx-chip" style={{ color:'var(--muted)', borderColor:'rgba(255,255,255,0.1)', background:'rgba(255,255,255,0.05)' }}>
@@ -861,7 +778,6 @@ function CalendarLegend({ useCycle, hasCycleData }) {
           </div>
         ))}
       </div>
-
       {useCycle && hasCycleData && (
         <div className="cal-legend-group">
           <span className="cal-legend-label">Cycle phase (left stripe)</span>
@@ -873,7 +789,6 @@ function CalendarLegend({ useCycle, hasCycleData }) {
           ))}
         </div>
       )}
-
       <div className="cal-legend-group">
         <span className="cal-legend-label">Nutrition (right stripe)</span>
         {[
@@ -914,12 +829,7 @@ function WeekStrip({ days, blocked, onDayClick, onBlockToggle, accDone }) {
         return (
           <div
             key={day.dateKey}
-            className={[
-              'cal-day-card',
-              day.isToday  ? 'cal-day-today'  : '',
-              isBlocked    ? 'cal-day-blocked' : '',
-              day.rest     ? 'cal-day-rest'    : '',
-            ].filter(Boolean).join(' ')}
+            className={['cal-day-card', day.isToday ? 'cal-day-today' : '', isBlocked ? 'cal-day-blocked' : '', day.rest ? 'cal-day-rest' : ''].filter(Boolean).join(' ')}
             onClick={() => !isBlocked && onDayClick(day)}
           >
             <button
@@ -933,23 +843,17 @@ function WeekStrip({ days, blocked, onDayClick, onBlockToggle, accDone }) {
             {cycleColor && !isBlocked && (
               <div className="cal-cycle-stripe" style={{ background: cycleColor }} />
             )}
-
             {bulkCutColor && !isBlocked && (
               <div className="cal-bulkcut-stripe" style={{ background: bulkCutColor }} />
             )}
 
             <div className="cal-day-header">
               <span className="cal-day-short">{DAY_SHORT[day.weekday]}</span>
-              <span className={`cal-day-num ${day.isToday ? 'cal-day-num-today' : ''}`}>
-                {day.dayNum}
-              </span>
+              <span className={`cal-day-num ${day.isToday ? 'cal-day-num-today' : ''}`}>{day.dayNum}</span>
             </div>
 
             {!isBlocked && day.cycleOptIn && day.cycleInfo && (
-              <div
-                className="cal-card-cycle-label"
-                style={{ color: cycleColor || 'var(--muted)' }}
-              >
+              <div className="cal-card-cycle-label" style={{ color: cycleColor || 'var(--muted)' }}>
                 {day.cycleInfo.phase.label}
               </div>
             )}
@@ -969,26 +873,16 @@ function WeekStrip({ days, blocked, onDayClick, onBlockToggle, accDone }) {
             ) : (
               <>
                 <div className="cal-day-lift">{day.lift}</div>
-
-                {wt && (
-                  <div className="cal-day-type" style={{ color:wt.color }}>
-                    {wt.label}
-                  </div>
-                )}
-
+                {wt && <div className="cal-day-type" style={{ color:wt.color }}>{wt.label}</div>}
                 {bulkCutColor && (
                   <div className="cal-day-nutr" style={{ color: bulkCutColor }}>
                     {day.bulkCutBlock.type.charAt(0).toUpperCase() + day.bulkCutBlock.type.slice(1)}
                     {day.caloricDelta ? ` · ${day.caloricDelta}` : ''}
                   </div>
                 )}
-
                 {accs.length > 0 && (
                   <div className="cal-day-acc-progress">
-                    <div
-                      className="cal-day-acc-bar"
-                      style={{ width:`${(doneAcc / accs.length) * 100}%` }}
-                    />
+                    <div className="cal-day-acc-bar" style={{ width:`${(doneAcc / accs.length) * 100}%` }} />
                   </div>
                 )}
               </>
@@ -1002,24 +896,23 @@ function WeekStrip({ days, blocked, onDayClick, onBlockToggle, accDone }) {
 
 // ─────────────────────────────────────────────────────────────
 // MAIN PAGE
+// Now accepts schedule + blockedDays as props from App
 // ─────────────────────────────────────────────────────────────
 
 export default function CalendarPage({
   athlete,
   nutrition = {},
+  schedule,          // ← from App — single source of truth
+  blockedDays,       // ← Set from App — shared with chat
+  onBlockToggle,     // ← lifts block changes up to App
   goToScreen,
 }) {
   const today = useMemo(() => today0(), []);
 
-  const [schedule,   setSchedule]   = useState(() => buildSchedule(athlete, nutrition));
-  const [blocked,    setBlocked]    = useState(new Set());
+  // Local accessor state (stays here — doesn't need to be global)
   const [accDone,    setAccDone]    = useState({});
   const [modalDay,   setModalDay]   = useState(null);
   const [weekOffset, setWeekOffset] = useState(0);
-
-  useEffect(() => {
-    setSchedule(buildSchedule(athlete, nutrition));
-  }, [athlete, nutrition]);
 
   const useCycle = athlete?.gender === 'female' && athlete?.cycleTracking === true;
   const cycleAnchor = useMemo(
@@ -1038,7 +931,7 @@ export default function CalendarPage({
   }, [nutrition?.bulkCutBlocks, today]);
 
   const visibleDays = useMemo(
-    () => schedule.slice(weekOffset * 7, weekOffset * 7 + 7),
+    () => (schedule || []).slice(weekOffset * 7, weekOffset * 7 + 7),
     [schedule, weekOffset]
   );
 
@@ -1048,20 +941,19 @@ export default function CalendarPage({
     return `${MONTH_NAMES[s.getMonth()]} ${s.getDate()} – ${MONTH_NAMES[e.getMonth()]} ${e.getDate()}`;
   }, [today, weekOffset]);
 
-  const toggleBlock = useCallback(dateKey => {
-    setBlocked(prev => {
-      const next = new Set(prev);
-      next.has(dateKey) ? next.delete(dateKey) : next.add(dateKey);
-      return next;
-    });
-  }, []);
-
   const toggleAcc = useCallback((dateKey, idx) => {
     setAccDone(prev => ({
       ...prev,
       [dateKey]: { ...(prev[dateKey] || {}), [idx]: !(prev[dateKey]?.[idx]) },
     }));
   }, []);
+
+  // Determine if schedule was AI-modified
+  // (AI schedules may have lift names with set/rep notation like "Back Squat 5×5")
+  const isAISchedule = useMemo(() => {
+    if (!schedule) return false;
+    return schedule.some(d => d.lift && /\d+[×x]\d+/.test(d.lift));
+  }, [schedule]);
 
   return (
     <div className="screen cal-screen">
@@ -1076,6 +968,7 @@ export default function CalendarPage({
               ? hasCycleData ? 'Cycle-optimised ✓' : 'Cycle tracking on — log period to activate'
               : 'Standard schedule'}
           </p>
+          {isAISchedule && <AISourceBadge />}
         </div>
       </div>
 
@@ -1099,9 +992,9 @@ export default function CalendarPage({
 
       <WeekStrip
         days={visibleDays}
-        blocked={blocked}
+        blocked={blockedDays || new Set()}
         onDayClick={setModalDay}
-        onBlockToggle={toggleBlock}
+        onBlockToggle={onBlockToggle}
         accDone={accDone}
       />
 
@@ -1109,8 +1002,8 @@ export default function CalendarPage({
 
       <AIInsightPanel
         athlete={athlete}
-        schedule={schedule}
-        blockedDays={blocked.size}
+        schedule={schedule || []}
+        blockedDays={blockedDays?.size ?? 0}
         nutrition={nutrition}
       />
 
@@ -1119,7 +1012,7 @@ export default function CalendarPage({
           day={modalDay}
           athlete={athlete}
           onClose={() => setModalDay(null)}
-          onBlock={toggleBlock}
+          onBlock={onBlockToggle}
           onStartLift={() => goToScreen?.('liveWorkout')}
           onToggleAcc={toggleAcc}
           accDone={accDone}
