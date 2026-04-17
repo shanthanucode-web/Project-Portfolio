@@ -1369,7 +1369,9 @@ export default function NutritionPage({ athlete, nutrition, setNutrition, goToSc
   const showBulkCut = athlete?.nutritionGuidance && athlete?.doesBulkCutCycles;
 
   /* Page is disabled only when there is nothing at all to show */
-  const nutritionEnabled = showBulkCut || trackPeriod;
+  // Page only fully disabled if nutritionGuidance is off AND no cycle tracking
+  // doesBulkCutCycles=false just hides cycle-specific UI, not the whole page
+  const nutritionEnabled = (athlete?.nutritionGuidance) || trackPeriod;
 
   const [viewYear, setViewYear] = useState(today.getFullYear());
   const [viewMonth, setViewMonth] = useState(today.getMonth());
@@ -1433,10 +1435,10 @@ export default function NutritionPage({ athlete, nutrition, setNutrition, goToSc
   const [weightLogErr, setWeightLogErr] = useState('');
 
   function handleDayClick(date) {
-    if (!showBulkCut) return;
     const key = toKey(date);
     const isToday = key === toKey(today);
     const isPast = date < today;
+    // Always allow weight logging on past/today regardless of bulk/cut setting
     if (isPast || isToday) {
       // Open weight log modal for past/today — pre-fill if already logged
       const existing = (nutrition.weightLog ?? []).find((e) => e.date === key);
@@ -1445,8 +1447,8 @@ export default function NutritionPage({ athlete, nutrition, setNutrition, goToSc
       setWeightLogErr('');
       setShowWeightLogModal(true);
     } else {
-      // Future date → cycle editor as before
-      setSelectedDate(date);
+      // Future date → cycle editor only if bulk/cut is enabled
+      if (showBulkCut) setSelectedDate(date);
     }
   }
 
@@ -1562,8 +1564,7 @@ export default function NutritionPage({ athlete, nutrition, setNutrition, goToSc
             <div className="nutr-disabled-icon">🥗</div>
             <h2 className="nutr-disabled-title">Nutrition tracking is off</h2>
             <p className="nutr-disabled-body">
-              Enable <strong>Nutrition Guidance</strong>,{' '}
-              <strong>Bulk / Cut Cycles</strong>, or{' '}
+              Enable <strong>Nutrition Guidance</strong> or{' '}
               <strong>Cycle Tracking</strong> in your profile to use this page.
             </p>
             <button
@@ -1653,8 +1654,8 @@ export default function NutritionPage({ athlete, nutrition, setNutrition, goToSc
                     className={cellClass}
                     onClick={() => handleDayClick(date)}
                     role="button"
-                    tabIndex={!showBulkCut ? -1 : 0}
-                    onKeyDown={(e) => e.key === 'Enter' && showBulkCut && handleDayClick(date)}
+                    tabIndex={0}
+                    onKeyDown={(e) => e.key === 'Enter' && handleDayClick(date)}
                   >
                     <span className="nutr-day-num">{date.getDate()}</span>
                     {b && <span className="nutr-day-tag">{b.type}</span>}
@@ -1713,6 +1714,16 @@ export default function NutritionPage({ athlete, nutrition, setNutrition, goToSc
           </div>
 
           {/* Sidebar — only when bulk/cut is enabled */}
+          {!showBulkCut && (
+            <div style={{ padding: '14px 0 4px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'rgba(247,249,255,0.6)', fontFamily: "'Space Grotesk', sans-serif" }}>
+                Weight tracking
+              </div>
+              <div style={{ fontSize: '0.74rem', color: 'rgba(216,226,255,0.45)', fontWeight: 600, lineHeight: 1.5, fontFamily: "'Inter', sans-serif" }}>
+                Click any past or today's date on the calendar to log your weight and build your trend graph.
+              </div>
+            </div>
+          )}
           {showBulkCut && (
             <div className="nutr-sidebar">
               <div className="nutr-panel">
