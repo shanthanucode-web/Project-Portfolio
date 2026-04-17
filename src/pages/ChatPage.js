@@ -1,13 +1,13 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 
-/* ─── exact same pattern as the working openai.js ─── */
-async function askGPT(systemPrompt, conversationHistory) {
+/* ─── Direct API call — JSON enforced at every layer ─── */
+async function callCoach(systemPrompt, conversationHistory) {
   const res = await fetch('/api/openai', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       model: 'gpt-4o-mini',
-      max_tokens: 1000,
+      max_tokens: 1500,
       messages: [
         { role: 'system', content: systemPrompt },
         ...conversationHistory,
@@ -16,75 +16,100 @@ async function askGPT(systemPrompt, conversationHistory) {
   });
 
   const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'OpenAI API error');
-  return data.output;
+  if (!res.ok) throw new Error(data.error || 'API error');
+
+  const raw = data.output || data.choices?.[0]?.message?.content || '';
+
+  // Strip any markdown code fences the model might add despite instructions
+  const clean = raw.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+
+  try {
+    const parsed = JSON.parse(clean);
+    // Validate newSchedule length if present
+    if (parsed.newSchedule && parsed.newSchedule.length !== 14) {
+      console.warn('AI schedule had wrong length:', parsed.newSchedule.length, '— ignoring');
+      parsed.newSchedule = null;
+    }
+    return parsed;
+  } catch {
+    // AI returned plain text despite instructions — wrap it
+    return { reply: clean.slice(0, 400), newSchedule: null };
+  }
 }
 
-/* ─── build system prompt from all athlete context ─── */
-function buildSystemPrompt({ athlete, schedule, nutrition, workoutHistory }) {
+/* ─── Build system prompt from all athlete context ─── */
+function buildSystemPrompt({ athlete, schedule, nutrition, workoutHistory, blockedDays }) {
   const bw = athlete?.bodyweight ? `${athlete.bodyweight} lbs` : 'unknown';
-  const height =
-    athlete?.heightFt != null
-      ? `${athlete.heightFt}'${athlete.heightIn ?? 0}"`
-      : 'unknown';
+  const height = athlete?.heightFt != null
+    ? `${athlete.heightFt}'${athlete.heightIn ?? 0}"`
+    : 'unknown';
 
-  const periodDays = nutrition?.periodDays ?? [];
   const bulkCutBlocks = nutrition?.bulkCutBlocks ?? [];
+  const periodDays    = nutrition?.periodDays ?? [];
 
-  const cycleText =
-    bulkCutBlocks.length > 0
-      ? bulkCutBlocks
-          .map((b) => `  • ${b.type.toUpperCase()} from ${b.start} to ${b.end}`)
-          .join('\n')
-      : '  None logged.';
+  const cycleText = bulkCutBlocks.length > 0
+    ? bulkCutBlocks.map((b) => `  • ${b.type.toUpperCase()} from ${b.start} to ${b.end}`).join('\n')
+    : '  None logged.';
 
-  const periodText =
-    periodDays.length > 0
-      ? `  ${periodDays.length} days logged: ${[...periodDays]
-          .sort()
-          .slice(-10)
-          .join(', ')} (showing last 10)`
-      : '  None logged.';
+  const periodText = periodDays.length > 0
+    ? `  ${periodDays.length} days logged (last 10): ${[...periodDays].sort().slice(-10).join(', ')}`
+    : '  None logged.';
 
-  const scheduleText =
-    schedule && schedule.length > 0
-      ? schedule
-          .map((s) => `  • ${s.day} ${s.date}: ${s.title} — ${s.focus} [${s.status}]`)
-          .join('\n')
-      : '  No schedule.';
+  const blockedText = blockedDays && blockedDays.size > 0
+    ? `  ${[...blockedDays].join(', ')}`
+    : '  None.';
 
-  const historyText =
-    workoutHistory && workoutHistory.length > 0
-      ? workoutHistory
-          .slice(0, 8)
-          .map(
-            (w) =>
-              `  • ${w.title} (${w.lift}): ${w.totalSets}×${Math.round(
-                w.totalReps / w.totalSets
-              )} @ ${w.weight} lbs, avg velocity ${w.avgVelocity} m/s, duration ${w.durationLabel}`
-          )
-          .join('\n')
-      : '  No workout history yet.';
+  const scheduleText = schedule && schedule.length > 0
+    ? schedule.map((d, i) =>
+        `  [${i}] ${d.dayLabel}: ${d.rest ? 'REST' : `${d.lift} (${d.type})`}${d.caloricDelta ? ` · ${d.caloricDelta}` : ''}`
+      ).join('\n')
+    : '  No schedule.';
 
-  return `You are Coach Nova, an elite strength and conditioning coach embedded in a personal training app. You have complete, real-time access to the athlete's data and you use it proactively. Be direct, specific, and evidence-based. Reference their actual numbers. Keep responses concise but substantive — 2-5 sentences for simple questions, a short structured breakdown for complex ones. Never be generic. Never say "great question." You are a coach, not a chatbot.
+  const historyText = workoutHistory && workoutHistory.length > 0
+    ? workoutHistory.slice(0, 6).map((w) =>
+        `  • ${w.title} (${w.lift}): ${w.totalSets}×${Math.round(w.totalReps / w.totalSets)} @ ${w.weight} lbs, avg velocity ${w.avgVelocity} m/s`
+      ).join('\n')
+    : '  No workout history yet.';
+
+  return `You are Coach Nova, a strength coach AI embedded in a training app. You control the athlete's calendar directly.
+
+CRITICAL: You MUST respond with ONLY a JSON object. No prose before or after. No markdown. No explanation outside the JSON. The app parses your raw response — anything that isn't valid JSON will break the UI.
+
+You have FULL capability to update the calendar. When the athlete asks to change any day, swap a lift, add leg day, adjust for injury, travel, or any other reason — you DO update it. Never say you "cannot" or "don't have the ability" to change the schedule. You always can.
+
+RESPONSE FORMAT — always one of these two:
+
+No schedule change needed:
+{"reply":"your message here","newSchedule":null}
+
+Schedule change needed (ALWAYS 14 entries, no more, no less):
+{"reply":"your message here","newSchedule":[{"lift":"Back Squat 5×5","type":"strength","rest":false},{"lift":null,"type":null,"rest":true}]}
+
+SCHEDULE RULES:
+- Exactly 14 array entries — one per day starting from today
+- Training day: lift=string describing the session, type=one of [strength|hypertrophy|endurance|pr|buildup|deload|recovery|power], rest=false
+- Rest day: lift=null, type=null, rest=true
+- At least 2 rest days per week, never more than 3 training days in a row
+- Factor in injuries — avoid movements that stress injured areas
+- Factor in bulk/cut phase when adjusting intensity
+- reply field: warm, direct, max 40 words, confirm what changed
 
 ━━━ ATHLETE PROFILE ━━━
 Name: ${athlete?.firstName ?? 'Athlete'} ${athlete?.lastName ?? ''}
-Age: ${athlete?.age ?? 'unknown'}
-Gender: ${athlete?.gender ?? 'unknown'}
-Bodyweight: ${bw}
-Height: ${height}
+Age: ${athlete?.age ?? 'unknown'} | Gender: ${athlete?.gender ?? 'unknown'}
+Bodyweight: ${bw} | Height: ${height}
 Primary goal: ${athlete?.goal ?? 'unknown'}
 Equipment: ${athlete?.equipment ?? 'unknown'}
-Calorie tracking style: ${athlete?.calorieTrackingStyle ?? 'unknown'}
-Weight direction goal: ${athlete?.weightDirectionGoal ?? 'unknown'}
-Nutrition guidance enabled: ${athlete?.nutritionGuidance ? 'yes' : 'no'}
-Bulk/cut cycles enabled: ${athlete?.doesBulkCutCycles ? 'yes' : 'no'}
-Cycle tracking enabled: ${athlete?.cycleTracking ? 'yes' : 'no'}
-Special considerations: ${athlete?.considerations || 'none'}
+Nutrition guidance: ${athlete?.nutritionGuidance ? 'yes' : 'no'}
+Bulk/cut cycles: ${athlete?.doesBulkCutCycles ? 'yes' : 'no'}
+Cycle tracking: ${athlete?.cycleTracking ? 'yes' : 'no'}
+Special considerations / injuries: ${athlete?.considerations || 'none'}
 
-━━━ UPCOMING SCHEDULE ━━━
+━━━ CURRENT 14-DAY SCHEDULE (index = day offset from today) ━━━
 ${scheduleText}
+
+━━━ BLOCKED DAYS ━━━
+${blockedText}
 
 ━━━ BULK / CUT CYCLES ━━━
 ${cycleText}
@@ -92,24 +117,95 @@ ${cycleText}
 ━━━ PERIOD TRACKING ━━━
 ${periodText}
 
-━━━ WORKOUT HISTORY (recent) ━━━
-${historyText}
-
-Always personalize your advice to this athlete's actual data above. If they ask about nutrition, reference their current cycle if active. If they ask about training, reference their schedule and history. If cycle tracking is enabled, factor in menstrual phase when relevant.`;
+━━━ RECENT WORKOUT HISTORY ━━━
+${historyText}`;
 }
 
-/* ─── suggested prompts ─── */
+/* ─── Suggested prompts ─── */
 const SUGGESTIONS = [
   'How should I eat today given my current cycle?',
   "What's my weakest point based on my recent lifts?",
-  'Should I push heavy or go for volume this week?',
-  'How is my recovery looking?',
+  'I tweaked my shoulder — adjust my plan',
+  'I'm traveling next week, only have a hotel gym',
+  'Push my squat focus this week',
+  'I want to deload — rebuild my schedule',
 ];
 
 function TypingDots() {
   return (
     <div className="chat-typing-dots">
       <span /><span /><span />
+    </div>
+  );
+}
+
+/* ─── Schedule change preview banner ─── */
+function ScheduleChangedBanner({ schedule, onDismiss }) {
+  if (!schedule) return null;
+  const workDays = schedule.filter(d => !d.rest).length;
+  const restDays = schedule.filter(d => d.rest).length;
+  return (
+    <div style={{
+      margin: '0 16px 12px',
+      padding: '12px 16px',
+      borderRadius: 16,
+      background: 'linear-gradient(135deg, rgba(87,240,192,0.1), rgba(87,165,255,0.08))',
+      border: '1px solid rgba(87,240,192,0.25)',
+      display: 'flex',
+      alignItems: 'center',
+      gap: 12,
+    }}>
+      <div style={{ fontSize: 18, flexShrink: 0 }}>📅</div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#57f0c0', marginBottom: 3 }}>
+          Calendar updated
+        </div>
+        <div style={{ fontSize: '0.74rem', color: 'rgba(216,226,255,0.65)', fontWeight: 600 }}>
+          {workDays} training days · {restDays} rest days · changes live on your calendar
+        </div>
+        <div style={{
+          marginTop: 8,
+          display: 'flex',
+          gap: 4,
+          flexWrap: 'wrap',
+        }}>
+          {schedule.slice(0, 7).map((d, i) => (
+            <div key={i} style={{
+              padding: '3px 8px',
+              borderRadius: 8,
+              fontSize: '0.66rem',
+              fontWeight: 700,
+              background: d.rest
+                ? 'rgba(255,255,255,0.06)'
+                : 'rgba(87,165,255,0.15)',
+              color: d.rest ? 'rgba(216,226,255,0.4)' : '#57a5ff',
+              border: `1px solid ${d.rest ? 'rgba(255,255,255,0.08)' : 'rgba(87,165,255,0.25)'}`,
+              whiteSpace: 'nowrap',
+            }}>
+              {d.rest ? 'Rest' : (d.lift || '—').split(' ').slice(0, 2).join(' ')}
+            </div>
+          ))}
+          <div style={{
+            padding: '3px 8px', borderRadius: 8, fontSize: '0.66rem',
+            fontWeight: 700, color: 'rgba(216,226,255,0.4)',
+            background: 'rgba(255,255,255,0.04)',
+            border: '1px solid rgba(255,255,255,0.06)',
+          }}>
+            +7 more →
+          </div>
+        </div>
+      </div>
+      <button
+        onClick={onDismiss}
+        style={{
+          flexShrink: 0, width: 24, height: 24, borderRadius: '50%',
+          background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)',
+          color: 'rgba(247,249,255,0.5)', cursor: 'pointer', fontSize: '0.9rem',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}
+      >
+        ×
+      </button>
     </div>
   );
 }
@@ -121,6 +217,17 @@ function MessageBubble({ msg }) {
       {isCoach && <div className="chat-avatar"><span>N</span></div>}
       <div className={`chat-bubble ${isCoach ? 'chat-bubble-coach' : 'chat-bubble-user'}`}>
         {msg.text}
+        {msg.scheduleChanged && (
+          <div style={{
+            marginTop: 8, paddingTop: 8,
+            borderTop: '1px solid rgba(87,240,192,0.2)',
+            fontSize: '0.72rem', fontWeight: 700,
+            color: '#57f0c0',
+            display: 'flex', alignItems: 'center', gap: 5,
+          }}>
+            <span>📅</span> Calendar updated — check the Calendar tab
+          </div>
+        )}
       </div>
     </div>
   );
@@ -133,16 +240,21 @@ export default function ChatPage({
   chatMessages,
   setChatMessages,
   workoutHistory,
+  blockedDays,
+  onApplySchedule,
+  onBlockDay,
+  goToScreen,
 }) {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [lastNewSchedule, setLastNewSchedule] = useState(null);
   const bottomRef = useRef(null);
   const textareaRef = useRef(null);
 
   const systemPrompt = useMemo(
-    () => buildSystemPrompt({ athlete, schedule, nutrition, workoutHistory }),
-    [athlete, schedule, nutrition, workoutHistory]
+    () => buildSystemPrompt({ athlete, schedule, nutrition, workoutHistory, blockedDays }),
+    [athlete, schedule, nutrition, workoutHistory, blockedDays]
   );
 
   useEffect(() => {
@@ -164,7 +276,7 @@ export default function ChatPage({
 
     const userMsg = { id: Date.now(), role: 'user', text: trimmed };
 
-    // Build history for API — oldest first, max 40 messages
+    // Build conversation history for API — oldest first, max 40 messages
     const history = [...chatMessages]
       .reverse()
       .slice(0, 39)
@@ -175,10 +287,26 @@ export default function ChatPage({
     setLoading(true);
 
     try {
-      const reply = await askGPT(systemPrompt, history);
-      const assistantMsg = { id: Date.now() + 1, role: 'assistant', text: reply };
+      const result = await callCoach(systemPrompt, history);
+
+      const scheduleChanged = !!result.newSchedule;
+
+      // Apply schedule if AI returned one
+      if (scheduleChanged && onApplySchedule) {
+        onApplySchedule(result.newSchedule);
+        setLastNewSchedule(result.newSchedule);
+      }
+
+      const assistantMsg = {
+        id: Date.now() + 1,
+        role: 'assistant',
+        text: result.reply || result,
+        scheduleChanged,
+      };
+
       setChatMessages((prev) => [assistantMsg, ...prev]);
     } catch (err) {
+      console.error('Chat error:', err);
       setError('Failed to reach Coach Nova. Check your connection and try again.');
     } finally {
       setLoading(false);
@@ -232,8 +360,24 @@ export default function ChatPage({
           background: var(--mint); box-shadow: 0 0 6px rgba(87,240,192,0.8);
           margin-right: 5px; vertical-align: middle;
         }
+        .chat-context-strip {
+          flex-shrink: 0;
+          padding: 8px 16px;
+          display: flex;
+          gap: 6px;
+          flex-wrap: wrap;
+          border-bottom: 1px solid rgba(255,255,255,0.05);
+          background: rgba(255,255,255,0.02);
+        }
+        .chat-ctx-chip {
+          padding: 3px 10px;
+          border-radius: 999px;
+          font-size: 0.68rem;
+          font-weight: 700;
+          border: 1px solid;
+        }
         .chat-messages {
-          flex: 1; overflow-y: auto; padding: 20px 16px;
+          flex: 1; overflow-y: auto; padding: 16px 16px 8px;
           display: flex; flex-direction: column-reverse; gap: 12px;
           scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.1) transparent;
         }
@@ -285,7 +429,7 @@ export default function ChatPage({
           font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.18em;
           font-weight: 800; color: var(--muted);
         }
-        .chat-suggestions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; max-width: 560px; }
+        .chat-suggestions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; max-width: 580px; }
         .chat-suggestion-btn {
           padding: 8px 14px; background: rgba(255,255,255,0.06);
           border: 1px solid rgba(255,255,255,0.1); border-radius: 999px;
@@ -300,7 +444,7 @@ export default function ChatPage({
           font-size: 0.76rem; color: #ffb8b8; text-align: center; padding: 6px 16px; flex-shrink: 0;
         }
         .chat-input-bar {
-          flex-shrink: 0; padding: 12px 16px 16px;
+          flex-shrink: 0; padding: 8px 16px 16px;
           border-top: 1px solid rgba(255,255,255,0.07);
           background: rgba(255,255,255,0.02); backdrop-filter: blur(12px);
         }
@@ -327,19 +471,68 @@ export default function ChatPage({
         .chat-input-hint {
           font-size: 0.63rem; color: var(--muted); text-align: center; margin-top: 7px; opacity: 0.6;
         }
+        .chat-cal-btn {
+          display: flex; align-items: center; gap: 6px;
+          padding: 6px 14px; border-radius: 999px;
+          background: rgba(87,240,192,0.1); border: 1px solid rgba(87,240,192,0.25);
+          color: #57f0c0; font-size: 0.74rem; font-weight: 700;
+          cursor: pointer; transition: background 0.15s;
+          margin-top: 8px;
+        }
+        .chat-cal-btn:hover { background: rgba(87,240,192,0.18); }
       `}</style>
 
+      {/* Header */}
       <div className="chat-header">
         <div className="chat-header-avatar">N</div>
-        <div className="chat-header-info">
+        <div>
           <div className="chat-header-name">Coach Nova</div>
           <div className="chat-header-sub">
             <span className="chat-header-dot" />
-            Live · knows your full profile
+            Live · reads your schedule, nutrition &amp; history
           </div>
         </div>
       </div>
 
+      {/* Context strip — shows what Nova currently knows */}
+      <div className="chat-context-strip">
+        <span className="chat-ctx-chip" style={{ color: 'var(--violet)', borderColor: 'rgba(143,124,255,0.3)', background: 'rgba(143,124,255,0.1)' }}>
+          {athlete?.goal ?? 'goal unknown'}
+        </span>
+        {athlete?.considerations && (
+          <span className="chat-ctx-chip" style={{ color: '#ffd84d', borderColor: 'rgba(255,216,77,0.3)', background: 'rgba(255,216,77,0.1)' }}>
+            ⚠ {athlete.considerations.slice(0, 30)}{athlete.considerations.length > 30 ? '…' : ''}
+          </span>
+        )}
+        {(() => {
+          const today = new Date(); today.setHours(0,0,0,0);
+          const todayKey = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+          const block = (nutrition?.bulkCutBlocks ?? []).find(b => todayKey >= b.start && todayKey <= b.end);
+          return block ? (
+            <span className="chat-ctx-chip" style={{ color: block.type === 'bulk' ? 'var(--mint)' : block.type === 'cut' ? 'var(--orange)' : 'var(--blue)', borderColor: 'rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.06)' }}>
+              {block.type} phase
+            </span>
+          ) : null;
+        })()}
+        {blockedDays?.size > 0 && (
+          <span className="chat-ctx-chip" style={{ color: 'rgba(216,226,255,0.5)', borderColor: 'rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.04)' }}>
+            {blockedDays.size} day{blockedDays.size !== 1 ? 's' : ''} blocked
+          </span>
+        )}
+        <span className="chat-ctx-chip" style={{ color: 'rgba(216,226,255,0.4)', borderColor: 'rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.03)' }}>
+          {schedule?.filter(d => !d.rest).length ?? 0} training days ahead
+        </span>
+      </div>
+
+      {/* Schedule change banner */}
+      {lastNewSchedule && (
+        <ScheduleChangedBanner
+          schedule={schedule}
+          onDismiss={() => setLastNewSchedule(null)}
+        />
+      )}
+
+      {/* Messages or suggestions */}
       {showSuggestions ? (
         <div className="chat-empty">
           <div className="chat-empty-label">Ask your coach</div>
@@ -350,6 +543,11 @@ export default function ChatPage({
               </button>
             ))}
           </div>
+          {goToScreen && (
+            <button className="chat-cal-btn" onClick={() => goToScreen('calendar')}>
+              📅 View your calendar
+            </button>
+          )}
         </div>
       ) : (
         <div className="chat-messages">
@@ -373,7 +571,7 @@ export default function ChatPage({
           <textarea
             ref={textareaRef}
             className="chat-textarea"
-            placeholder="Ask Coach Nova anything…"
+            placeholder="Tell Nova anything — injury, travel, new goal, blocked days…"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
@@ -390,7 +588,7 @@ export default function ChatPage({
             </svg>
           </button>
         </div>
-        <div className="chat-input-hint">Enter to send · Shift+Enter for new line</div>
+        <div className="chat-input-hint">Enter to send · Shift+Enter for new line · schedule updates live</div>
       </div>
     </div>
   );
