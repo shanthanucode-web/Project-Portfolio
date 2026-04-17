@@ -103,23 +103,43 @@ function FullWeekStrip({ days, blocked, onDayClick, onBlockToggle, accDone, week
   startDate.setDate(today.getDate() + weekOffset * 7);
   const endDate = new Date(startDate);
   endDate.setDate(startDate.getDate() + 6);
-
   const weekLabel = `${MONTH_NAMES[startDate.getMonth()]} ${startDate.getDate()} – ${MONTH_NAMES[endDate.getMonth()]} ${endDate.getDate()}`;
 
+  const btnBase = {
+    padding: '5px 14px', borderRadius: 999, fontSize: '0.74rem', fontWeight: 700,
+    fontFamily: "'Space Grotesk', sans-serif", border: '1px solid', cursor: 'pointer',
+    whiteSpace: 'nowrap', transition: 'background 0.15s',
+  };
+
   return (
-    <div className="home-full-calendar glass-panel">
-      {/* Header row */}
-      <div className="home-cal-header">
+    <div className="home-full-calendar glass-panel" style={{ padding: '20px 20px 18px' }}>
+
+      {/* Header: title left, week nav right */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, gap: 12 }}>
         <div>
-          <span className="home-panel-kicker">Schedule</span>
-          <h2 className="home-panel-title" style={{ marginBottom: 0 }}>Training Calendar</h2>
+          <div style={{ fontSize: '0.6rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(216,226,255,0.4)', fontFamily: "'Inter', sans-serif", marginBottom: 3 }}>
+            Schedule
+          </div>
+          <div style={{ fontSize: '1rem', fontWeight: 700, color: 'rgba(247,249,255,0.9)', fontFamily: "'Space Grotesk', sans-serif" }}>
+            Training Calendar
+          </div>
         </div>
-        <div className="home-cal-week-nav">
-          <button className="cal-week-btn" disabled={weekOffset === 0} onClick={() => onWeekChange(0)}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+          <button
+            disabled={weekOffset === 0}
+            onClick={() => onWeekChange(0)}
+            style={{ ...btnBase, background: weekOffset === 0 ? 'rgba(255,255,255,0.04)' : 'rgba(87,165,255,0.12)', borderColor: weekOffset === 0 ? 'rgba(255,255,255,0.08)' : 'rgba(87,165,255,0.3)', color: weekOffset === 0 ? 'rgba(216,226,255,0.25)' : '#57a5ff', cursor: weekOffset === 0 ? 'default' : 'pointer' }}
+          >
             ← Wk 1
           </button>
-          <span className="home-cal-week-label">{weekLabel}</span>
-          <button className="cal-week-btn" disabled={weekOffset === 1} onClick={() => onWeekChange(1)}>
+          <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'rgba(247,249,255,0.75)', fontFamily: "'Space Grotesk', sans-serif", whiteSpace: 'nowrap', minWidth: 112, textAlign: 'center' }}>
+            {weekLabel}
+          </span>
+          <button
+            disabled={weekOffset === 1}
+            onClick={() => onWeekChange(1)}
+            style={{ ...btnBase, background: weekOffset === 1 ? 'rgba(255,255,255,0.04)' : 'rgba(87,165,255,0.12)', borderColor: weekOffset === 1 ? 'rgba(255,255,255,0.08)' : 'rgba(87,165,255,0.3)', color: weekOffset === 1 ? 'rgba(216,226,255,0.25)' : '#57a5ff', cursor: weekOffset === 1 ? 'default' : 'pointer' }}
+          >
             Wk 2 →
           </button>
         </div>
@@ -575,54 +595,6 @@ function HomePage({
             </div>
           )}
         </section>
-
-        {/* ── HOME-SPECIFIC OVERRIDES ── */}
-        <style>{`
-          /* Fix date + block-button crowding on day cards */
-          .cal-day-card .cal-day-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 4px;
-            padding-right: 28px; /* leave room for the × button */
-          }
-          .cal-day-card .cal-block-btn {
-            position: absolute;
-            top: 8px;
-            right: 8px;
-            width: 20px;
-            height: 20px;
-            font-size: 0.65rem;
-            padding: 0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            flex-shrink: 0;
-          }
-          .cal-day-card .cal-day-short {
-            font-size: 0.68rem;
-            white-space: nowrap;
-          }
-          .cal-day-card .cal-day-num {
-            font-size: 1.35rem;
-            line-height: 1;
-          }
-
-          /* Recovery narrow, progress wider */
-          .home-mid-row {
-            display: flex;
-            gap: 12px;
-            align-items: stretch;
-          }
-          .home-mid-row .home-recovery-panel {
-            flex: 0 0 200px;
-            min-width: 0;
-          }
-          .home-mid-row .home-progress-panel {
-            flex: 1 1 0;
-            min-width: 0;
-          }
-        `}</style>
 
         {/* ── FULL CALENDAR ── */}
         <FullWeekStrip
