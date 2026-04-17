@@ -208,13 +208,13 @@ function ProfilePage({ athlete, setAthlete, goBack }) {
           {form.nutritionGuidance && (
             <div className="profile-grid profile-grid-nutrition">
               <div className="profile-field">
-                <FieldLabel>Do you do cutting/bulking cycles?</FieldLabel>
+                <FieldLabel>Do you follow bulk / cut / maintain cycles?</FieldLabel>
                 <select
                   value={form.doesBulkCutCycles ? 'yes' : 'no'}
                   onChange={(e) => handleChange('doesBulkCutCycles', e.target.value === 'yes')}
                 >
-                  <option value="yes">Yes</option>
-                  <option value="no">No</option>
+                  <option value="yes">Yes — show cycle calendar &amp; planning tools</option>
+                  <option value="no">No — just track calories &amp; weight</option>
                 </select>
               </div>
             </div>
