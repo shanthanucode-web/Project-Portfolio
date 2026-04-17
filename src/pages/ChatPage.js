@@ -61,11 +61,32 @@ function buildSystemPrompt({ athlete, schedule, nutrition, workoutHistory, block
     ? `  ${[...blockedDays].join(', ')}`
     : '  None.';
 
+  // ── Inject real dates into every schedule row ──
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+
   const scheduleText = schedule && schedule.length > 0
-    ? schedule.map((d, i) =>
-        `  [${i}] ${d.dayLabel}: ${d.rest ? 'REST' : `${d.lift} (${d.type})`}${d.caloricDelta ? ` · ${d.caloricDelta}` : ''}`
-      ).join('\n')
+    ? schedule.map((d, i) => {
+        const date = new Date(now);
+        date.setDate(now.getDate() + i);
+        const weekday = date.toLocaleDateString('en-US', { weekday: 'long' });
+        const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        const isWeekend = date.getDay() === 0 || date.getDay() === 6;
+        const label = `${weekday} ${dateStr}${isWeekend ? ' [WEEKEND]' : ''}`;
+        return `  [${i}] ${label}: ${d.rest ? 'REST' : `${d.lift} (${d.type})`}${d.caloricDelta ? ` · ${d.caloricDelta}` : ''}`;
+      }).join('\n')
     : '  No schedule.';
+
+  // Human-readable today string for the prompt header
+  const todayFull = now.toLocaleDateString('en-US', {
+    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+  });
+
+  // Compute which indices are this coming Saturday and Sunday
+  const todayDow = now.getDay(); // 0=Sun … 6=Sat
+  const daysUntilSat = todayDow === 6 ? 0 : (6 - todayDow);
+  const daysUntilSun = todayDow === 0 ? 0 : (7 - todayDow);
+  const thisWeekendText = `Saturday = index ${daysUntilSat}, Sunday = index ${daysUntilSun}`;
 
   const historyText = workoutHistory && workoutHistory.length > 0
     ? workoutHistory.slice(0, 6).map((w) =>
@@ -93,34 +114,40 @@ Every day object is one of:
 
 type must be one of: strength | hypertrophy | endurance | pr | buildup | deload | recovery | power
 
+CRITICAL REPLY RULES:
+- The "reply" value must be a plain human sentence — 1 to 3 sentences max.
+- NO JSON inside reply. NO curly braces. NO square brackets. NO code. NO lists.
+- If your reply contains { or [ or } or ] characters you have made a critical error — rewrite it as plain English.
+- Good example: "Blocked Saturday and Sunday, moved those sessions to Monday and Tuesday."
+- Bad example: {"newSchedule": [...]} or "Here is your updated schedule: [{"lift":..."
+
 ═══════════════════════════
 WHEN TO UPDATE THE SCHEDULE
 ═══════════════════════════
 Update the schedule for ANY of these (and similar requests):
 - "make today leg day" → swap today's lift with a leg session, push the displaced session forward
-- "I'm busy this weekend" → move weekend training days to weekdays
-- "no weekends" → permanently move any Sat/Sun training days to nearby weekdays for all 14 days
+- "I'm busy this weekend" → use the WEEKEND INDEX MAP below to identify Sat/Sun, make them rest, move sessions to nearest weekdays
+- "no weekends" → find all [WEEKEND] tagged entries in the schedule, make them rest, redistribute sessions to weekdays
 - "my arms hurt" / "shoulder injury" → remove arm/shoulder movements, replace with lower body or cardio equivalents
 - "I want more squats" → increase squat frequency in the schedule
 - "drop OHP" → remove overhead press days, replace with another lift
 - "I'm traveling Mon-Wed" → mark those days rest, compress the training into remaining days
 - "deload this week" → swap all training days in week 1 to deload type, reduce intensity
 - "I need an extra rest day" → add a rest day, shift remaining sessions
-- "swap Tuesday and Thursday" → literally swap those two days' sessions
+- "swap Tuesday and Thursday" → use the schedule's weekday labels to identify the correct indices, then swap
 - "push today to tomorrow" → move today's session to tomorrow, make today rest
 - "I have a meet on day 10" → taper: make days 8-9 buildup, day 10 pr attempt, day 11-12 recovery
 - Any injury mention → immediately remove that movement pattern for the affected days
 
+WEEKEND INDEX MAP (use these exact indices when athlete mentions "this weekend"):
+  ${thisWeekendText}
+Any entry tagged [WEEKEND] in the schedule below is also a weekend day — make it rest if athlete asks.
+
 SWAPPING LOGIC — when athlete asks to swap days or move a session:
-1. Identify the two days involved (e.g. today=index 0, tomorrow=index 1)
+1. Find the two day indices by matching the weekday name in the schedule labels (e.g. "Tuesday" → find index where label contains "Tuesday")
 2. Swap their lift and type values
 3. Keep rest days as rest — do not pack rest into training days
 4. Return the full 14-day array with the swap applied
-
-WEEKEND BLOCKING LOGIC:
-- Look at the dayLabel field in the current schedule to identify Sat/Sun entries
-- Replace any Sat/Sun training day with rest:true
-- Move that session to the nearest available weekday that isn't already packed
 
 INJURY LOGIC:
 - Shoulder/arm injury → replace bench, OHP, rows with squat, deadlift, leg press, cardio
@@ -137,6 +164,10 @@ SCHEDULE CONSTRAINTS
 - Preserve today (index 0) unless athlete explicitly asks to change it
 - Keep sessions athlete didn't mention exactly as they are in the current schedule
 
+━━━ TODAY ━━━
+${todayFull}
+Index 0 = today. Index 1 = tomorrow. The schedule runs 14 days forward from today.
+
 ━━━ ATHLETE PROFILE ━━━
 Name: ${athlete?.firstName ?? 'Athlete'} ${athlete?.lastName ?? ''}
 Age: ${athlete?.age ?? 'unknown'} | Gender: ${athlete?.gender ?? 'unknown'}
@@ -146,6 +177,7 @@ Cycle tracking: ${athlete?.cycleTracking ? 'yes' : 'no'}
 Injuries / considerations: ${athlete?.considerations || 'none'}
 
 ━━━ CURRENT 14-DAY SCHEDULE ━━━
+(Each entry shows: [index] Weekday Month Day [WEEKEND if Sat/Sun]: session)
 ${scheduleText}
 
 ━━━ BLOCKED DAYS ━━━
