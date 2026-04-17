@@ -576,6 +576,54 @@ function HomePage({
           )}
         </section>
 
+        {/* ── HOME-SPECIFIC OVERRIDES ── */}
+        <style>{`
+          /* Fix date + block-button crowding on day cards */
+          .cal-day-card .cal-day-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 4px;
+            padding-right: 28px; /* leave room for the × button */
+          }
+          .cal-day-card .cal-block-btn {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            width: 20px;
+            height: 20px;
+            font-size: 0.65rem;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+          }
+          .cal-day-card .cal-day-short {
+            font-size: 0.68rem;
+            white-space: nowrap;
+          }
+          .cal-day-card .cal-day-num {
+            font-size: 1.35rem;
+            line-height: 1;
+          }
+
+          /* Recovery narrow, progress wider */
+          .home-mid-row {
+            display: flex;
+            gap: 12px;
+            align-items: stretch;
+          }
+          .home-mid-row .home-recovery-panel {
+            flex: 0 0 200px;
+            min-width: 0;
+          }
+          .home-mid-row .home-progress-panel {
+            flex: 1 1 0;
+            min-width: 0;
+          }
+        `}</style>
+
         {/* ── FULL CALENDAR ── */}
         <FullWeekStrip
           days={visibleDays}
