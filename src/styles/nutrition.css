@@ -235,6 +235,18 @@
 .nutr-day-past {
   opacity: 0.38;
   cursor: default;
+  pointer-events: none;
+}
+
+/* ADD this beneath it: */
+.nutr-day-past .nutr-weight-btn {
+  pointer-events: all;
+  cursor: pointer;
+}
+
+.nutr-day-past .nutr-droplet {
+  pointer-events: all;
+  cursor: pointer;
 }
 
 /* type colours */
@@ -515,4 +527,47 @@
   .nutr-day { height: 46px; }
   .nutr-day-tag { display: none; }
   .nutr-droplet { width: 15px; height: 15px; bottom: 2px; right: 2px; }
+}
+
+/* ── Weight log button (top-right of past/today cells) ── */
+.nutr-weight-btn {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1px solid rgba(143, 124, 255, 0.35);
+  background: rgba(143, 124, 255, 0.12);
+  color: rgba(143, 124, 255, 0.75);
+  font-size: 0.65rem;
+  font-weight: 800;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  transition: transform 0.14s, background 0.14s, border-color 0.14s;
+  z-index: 3;
+}
+.nutr-weight-btn:hover {
+  transform: scale(1.25);
+  background: rgba(143, 124, 255, 0.22);
+  border-color: rgba(143, 124, 255, 0.6);
+  color: #c4b8ff;
+}
+.nutr-weight-btn-logged {
+  background: rgba(143, 124, 255, 0.22);
+  border-color: rgba(143, 124, 255, 0.55);
+  color: #c4b8ff;
+  box-shadow: 0 0 6px rgba(143, 124, 255, 0.4);
+}
+.nutr-weight-btn-logged:hover {
+  background: rgba(143, 124, 255, 0.32);
+}
+
+/* On small screens, shrink it like the droplet */
+@media (max-width: 480px) {
+  .nutr-weight-btn { width: 15px; height: 15px; top: 2px; right: 2px; font-size: 0.55rem; }
 }

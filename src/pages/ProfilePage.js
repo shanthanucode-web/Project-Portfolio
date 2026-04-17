@@ -12,9 +12,6 @@ function ProfilePage({ athlete, setAthlete, goBack }) {
     considerations: athlete.considerations ?? '',
     nutritionGuidance: athlete.nutritionGuidance ?? true,
     doesBulkCutCycles: athlete.doesBulkCutCycles ?? true,
-    calorieTrackingStyle: athlete.calorieTrackingStyle ?? 'light',
-    weightDirectionGoal: athlete.weightDirectionGoal ?? 'gain',
-    progressLogFrequency: athlete.progressLogFrequency ?? 'weekly',
   });
 
   const [saved, setSaved] = useState(false);
@@ -26,9 +23,6 @@ function ProfilePage({ athlete, setAthlete, goBack }) {
       considerations: athlete.considerations ?? '',
       nutritionGuidance: athlete.nutritionGuidance ?? true,
       doesBulkCutCycles: athlete.doesBulkCutCycles ?? true,
-      calorieTrackingStyle: athlete.calorieTrackingStyle ?? 'light',
-      weightDirectionGoal: athlete.weightDirectionGoal ?? 'gain',
-      progressLogFrequency: athlete.progressLogFrequency ?? 'weekly',
     });
   }, [athlete]);
 
@@ -214,50 +208,13 @@ function ProfilePage({ athlete, setAthlete, goBack }) {
           {form.nutritionGuidance && (
             <div className="profile-grid profile-grid-nutrition">
               <div className="profile-field">
-                <FieldLabel>Do you do cutting/bulking cycles?</FieldLabel>
+                <FieldLabel>Do you follow bulk / cut / maintain cycles?</FieldLabel>
                 <select
                   value={form.doesBulkCutCycles ? 'yes' : 'no'}
                   onChange={(e) => handleChange('doesBulkCutCycles', e.target.value === 'yes')}
                 >
-                  <option value="yes">Yes</option>
-                  <option value="no">No</option>
-                </select>
-              </div>
-
-              <div className="profile-field">
-                <FieldLabel>How closely do you want to track calories?</FieldLabel>
-                <select
-                  value={form.calorieTrackingStyle}
-                  onChange={(e) => handleChange('calorieTrackingStyle', e.target.value)}
-                >
-                  <option value="none">Do not track</option>
-                  <option value="light">Lightly track</option>
-                  <option value="heavy">Heavily track</option>
-                </select>
-              </div>
-
-              <div className="profile-field">
-                <FieldLabel>Overall weight goal</FieldLabel>
-                <select
-                  value={form.weightDirectionGoal}
-                  onChange={(e) => handleChange('weightDirectionGoal', e.target.value)}
-                >
-                  <option value="lose">Lose weight</option>
-                  <option value="maintain">Maintain weight</option>
-                  <option value="gain">Gain weight</option>
-                </select>
-              </div>
-
-              <div className="profile-field">
-                <FieldLabel>How often do you want to log progress?</FieldLabel>
-                <select
-                  value={form.progressLogFrequency}
-                  onChange={(e) => handleChange('progressLogFrequency', e.target.value)}
-                >
-                  <option value="daily">Daily</option>
-                  <option value="weekly">Weekly</option>
-                  <option value="biweekly">Every 2 weeks</option>
-                  <option value="monthly">Monthly</option>
+                  <option value="yes">Yes — show cycle calendar &amp; planning tools</option>
+                  <option value="no">No — just track calories &amp; weight</option>
                 </select>
               </div>
             </div>
