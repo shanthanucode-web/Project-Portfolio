@@ -233,8 +233,9 @@
   transform: translateY(-1px);
 }
 .nutr-day-past {
-  opacity: 0.38;
-  cursor: default;
+   opacity: 0.38;
+   pointer-events: all;
+   cursor: pointer;
 }
 
 /* type colours */
