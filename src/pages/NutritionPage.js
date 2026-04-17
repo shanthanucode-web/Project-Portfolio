@@ -579,8 +579,8 @@ function WeighInEditor({ nutrition, setNutrition, athlete }) {
   const [editGoal, setEditGoal] = useState(String(goalWeight));
   const [saved, setSaved] = useState(false);
 
-  // Determine if weigh-in is due based on progressLogFrequency
-  const freq = athlete?.progressLogFrequency ?? 'weekly';
+  // Weigh-in frequency — weekly default (setting removed from profile)
+  const freq = 'weekly';
   const freqDays = freq === 'daily' ? 1 : freq === 'biweekly' ? 14 : 7;
   const lastLog = weightLog.length > 0 ? weightLog[weightLog.length - 1] : null;
   const daysSinceLast = lastLog
