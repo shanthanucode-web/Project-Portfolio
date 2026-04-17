@@ -1435,21 +1435,7 @@ export default function NutritionPage({ athlete, nutrition, setNutrition, goToSc
   const [weightLogErr, setWeightLogErr] = useState('');
 
   function handleDayClick(date) {
-    const key = toKey(date);
-    const isToday = key === toKey(today);
-    const isPast = date < today;
-    // Always allow weight logging on past/today regardless of bulk/cut setting
-    if (isPast || isToday) {
-      // Open weight log modal for past/today — pre-fill if already logged
-      const existing = (nutrition.weightLog ?? []).find((e) => e.date === key);
-      setWeightLogDate(date);
-      setWeightLogValue(existing ? String(existing.weight) : '');
-      setWeightLogErr('');
-      setShowWeightLogModal(true);
-    } else {
-      // Future date → cycle editor only if bulk/cut is enabled
-      if (showBulkCut) setSelectedDate(date);
-    }
+    if (showBulkCut) setSelectedDate(date);
   }
 
   function confirmWeightLog() {
