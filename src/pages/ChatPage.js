@@ -126,7 +126,7 @@ const SUGGESTIONS = [
   'How should I eat today given my current cycle?',
   "What's my weakest point based on my recent lifts?",
   'I tweaked my shoulder — adjust my plan',
-  'I'm traveling next week, only have a hotel gym',
+  "I'm traveling next week, only have a hotel gym",
   'Push my squat focus this week',
   'I want to deload — rebuild my schedule',
 ];
