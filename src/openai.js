@@ -10,22 +10,12 @@ async function askGPT(systemPrompt, userPrompt, conversationHistory = []) {
 
   const res = await fetch('/api/openai', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      max_tokens: 1500,
-      messages,
-    }),
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: MODEL, max_tokens: 1500, messages }),
   });
 
   const data = await res.json();
-
-  if (!res.ok) {
-    throw new Error(data.error || 'OpenAI API error');
-  }
-
+  if (!res.ok) throw new Error(data.error || 'OpenAI API error');
   return data.output;
 }
 
@@ -92,51 +82,48 @@ Bodyweight: ${d.bodyweight} lbs | Phase week: ${d.phaseWeek}/${d.phaseTotalWeeks
   return await askGPT(system, user);
 }
 
-export async function getChatCoachReply(conversationHistory, athleteContext, currentSchedule) {
-  const scheduleStr = currentSchedule.map((d, i) =>
-    `[${i}] ${d.dateLabel} (${d.weekday}): ${d.lift || 'REST'}${d.rest ? ' (rest)' : ''}`
-  ).join('\n');
-
-  const system = `You are BarbellBuddy's AI coach — strength coach, training partner, and life advisor for a serious lifter.
-
-ATHLETE CONTEXT:
-${athleteContext}
-
-CURRENT 14-DAY SCHEDULE:
-${scheduleStr}
-
-When the athlete tells you something that should change their training — less gym time, new girlfriend, travel, injury, overtrained, wants more squats, wants to drop OHP, etc — you MUST regenerate the full 14-day schedule to reflect their new reality.
-
-ALWAYS respond with valid JSON only. No markdown, no extra text.
-
-If NO schedule change needed:
-{ "reply": "...", "newSchedule": null }
-
-If schedule SHOULD change, regenerate all 14 days using this MINIMAL format — no reason, no nutr fields:
-{
-  "reply": "...",
-  "newSchedule": [
-    { "lift": "Squat 5x5", "type": "strength", "cal": "+350", "rest": false },
-    { "lift": null, "type": null, "cal": "+200", "rest": true }
-  ]
-}
-
-SCHEDULE RULES:
-- Always exactly 14 entries
-- Rest days: lift=null, type=null, rest=true
-- At least 2 rest days per week
-- Preserve today unless athlete specifically asks to change it
-- reply: warm, direct, max 40 words
-
-Valid type values: "strength", "hypertrophy", "endurance", "pr", "buildup", "deload"`;
-
-  const raw = await askGPT(system, '', conversationHistory);
+/**
+ * getChatCoachReply
+ *
+ * Now accepts a pre-built systemPrompt from ChatPage (which includes full
+ * athlete context, schedule, blocked days, nutrition, etc).
+ *
+ * Returns { reply: string, newSchedule: array|null }
+ * where newSchedule is 14 entries of { lift, type, cal, rest }
+ */
+export async function getChatCoachReply(conversationHistory, systemPrompt, currentSchedule) {
+  const raw = await askGPT(systemPrompt, '', conversationHistory);
 
   try {
     const clean = raw.replace(/```json|```/g, '').trim();
-    return JSON.parse(clean);
-  } catch {
-    // If JSON is truncated/malformed, return just the reply text with no schedule change
-    return { reply: raw.replace(/[{[\]"]/g, '').slice(0, 200), newSchedule: null };
+    const parsed = JSON.parse(clean);
+
+    // Validate structure
+    if (typeof parsed.reply !== 'string') {
+      throw new Error('Missing reply field');
+    }
+
+    // Validate newSchedule if present
+    if (parsed.newSchedule !== null && parsed.newSchedule !== undefined) {
+      if (!Array.isArray(parsed.newSchedule) || parsed.newSchedule.length !== 14) {
+        console.warn('AI returned schedule with wrong length, ignoring:', parsed.newSchedule?.length);
+        return { reply: parsed.reply, newSchedule: null };
+      }
+    }
+
+    return {
+      reply: parsed.reply,
+      newSchedule: parsed.newSchedule || null,
+    };
+  } catch (err) {
+    console.warn('Failed to parse AI response as JSON:', err.message);
+    // Graceful fallback — return the raw text as a reply with no schedule change
+    const replyText = raw
+      .replace(/[{[\]"]/g, '')
+      .replace(/newSchedule.*$/s, '')
+      .replace(/reply\s*:\s*/i, '')
+      .trim()
+      .slice(0, 300);
+    return { reply: replyText || raw.slice(0, 200), newSchedule: null };
   }
 }
