@@ -1660,8 +1660,23 @@ export default function NutritionPage({ athlete, nutrition, setNutrition, goToSc
                     <span className="nutr-day-num">{date.getDate()}</span>
                     {b && <span className="nutr-day-tag">{b.type}</span>}
                     {isToday && <span className="nutr-today-dot" />}
-                    {(nutrition.weightLog ?? []).some((e) => e.date === key) && (
-                      <span style={{ position:'absolute', top:4, right:4, width:5, height:5, borderRadius:'50%', background:'#8f7cff', boxShadow:'0 0 6px rgba(143,124,255,0.8)' }} />
+                    {(isPast || isToday) && (
+                      <button
+                        className={[
+                          'nutr-weight-btn',
+                          (nutrition.weightLog ?? []).some((e) => e.date === key) ? 'nutr-weight-btn-logged' : '',
+                        ].join(' ').trim()}
+                        onClick={(e) => { e.stopPropagation(); handleDayClick(date); }}
+                        title={
+                          (nutrition.weightLog ?? []).some((e) => e.date === key)
+                            ? `Edit weight · ${(nutrition.weightLog.find(e => e.date === key))?.weight} lbs`
+                            : 'Log weight'
+                        }
+                        tabIndex={-1}
+                        aria-label="Log weight"
+                      >
+                        {(nutrition.weightLog ?? []).some((e) => e.date === key) ? '⚖' : '+'}
+                      </button>
                     )}
 
                     {trackPeriod && (
@@ -1885,12 +1900,14 @@ export default function NutritionPage({ athlete, nutrition, setNutrition, goToSc
         )}
 
         {/* ─── NEW: Calorie Tracker ─── */}
-        <CalorieTracker
-          athlete={athlete}
-          cycleType={todayBlock?.type ?? null}
-          goalWeight={nutrition.goalWeight ?? null}
-          currentBlock={todayBlock ?? null}
-        />
+        {athlete?.nutritionGuidance && (
+          <CalorieTracker
+            athlete={athlete}
+            cycleType={todayBlock?.type ?? null}
+            goalWeight={nutrition.goalWeight ?? null}
+            currentBlock={todayBlock ?? null}
+          />
+        )}
 
       </div>
     </div>
