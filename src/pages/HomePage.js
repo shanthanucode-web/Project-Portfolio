@@ -1,14 +1,8 @@
 import '../styles/home.css';
 
-/* ─── helpers (self-contained, no imports needed) ─── */
+/* ─── helpers ─── */
 function toKey(d) {
-  return (
-    d.getFullYear() +
-    '-' +
-    String(d.getMonth() + 1).padStart(2, '0') +
-    '-' +
-    String(d.getDate()).padStart(2, '0')
-  );
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
 
 function calcDailyCalories(athlete, cycleType, goalWeight) {
@@ -31,453 +25,377 @@ function calcDailyCalories(athlete, cycleType, goalWeight) {
   return base;
 }
 
+/* ─── Derive workout "day type" label from lift name ─── */
+function getDayType(lift) {
+  if (!lift) return null;
+  const l = lift.toLowerCase();
+  if (l.includes('squat') || l.includes('leg') || l.includes('lower')) {
+    return { label: 'Leg Day', emoji: '🦵', accent: '#57f0c0', sub: 'Quads · Hamstrings · Glutes' };
+  }
+  if (l.includes('bench') || l.includes('chest') || l.includes('ohp') || l.includes('overhead') || l.includes('press') || l.includes('push')) {
+    return { label: 'Push Day', emoji: '💪', accent: '#57a5ff', sub: 'Chest · Shoulders · Triceps' };
+  }
+  if (l.includes('deadlift') || l.includes('row') || l.includes('pull') || l.includes('back') || l.includes('upper')) {
+    return { label: 'Pull Day', emoji: '🏋️', accent: '#8f7cff', sub: 'Back · Biceps · Rear Delts' };
+  }
+  if (l.includes('recovery') || l.includes('deload') || l.includes('mobility')) {
+    return { label: 'Recovery Day', emoji: '🧘', accent: '#ffd84d', sub: 'Active recovery · Mobility' };
+  }
+  return { label: lift, emoji: '⚡', accent: '#ff9f63', sub: 'Today\'s session' };
+}
+
+/* ─── Workout type color map ─── */
+const TYPE_COLORS = {
+  strength:    { color: '#8f7cff', bg: 'rgba(143,124,255,0.18)', label: 'Strength'        },
+  hypertrophy: { color: '#57a5ff', bg: 'rgba(87,165,255,0.18)',  label: 'Hypertrophy'     },
+  endurance:   { color: '#55d6ff', bg: 'rgba(85,214,255,0.18)',  label: 'Endurance'        },
+  pr:          { color: '#ff6fd8', bg: 'rgba(255,111,216,0.18)', label: 'PR Attempt'       },
+  deload:      { color: '#ffd84d', bg: 'rgba(255,216,77,0.18)',  label: 'Deload'           },
+  recovery:    { color: '#57f0c0', bg: 'rgba(87,240,192,0.15)',  label: 'Active Recovery'  },
+  power:       { color: '#ff6fd8', bg: 'rgba(255,111,216,0.15)', label: 'Power'            },
+  buildup:     { color: '#57f0c0', bg: 'rgba(87,240,192,0.18)',  label: 'Build-Up'         },
+};
+
+/* ─── Compute recovery % per muscle group from schedule ─── */
+function computeRecovery(schedule) {
+  const HEAL = { legs: 3, push: 2, pull: 2 };
+  const now = new Date(); now.setHours(0,0,0,0);
+
+  let lastLegs = null, lastPush = null, lastPull = null;
+
+  // walk schedule backwards to find most recent training day per group
+  for (const day of [...schedule].reverse()) {
+    if (day.rest || !day.lift) continue;
+    const l = (day.lift || '').toLowerCase();
+    const daysAgo = Math.round((now - day.date) / 86400000);
+    if (daysAgo < 0) continue; // future
+    if (!lastLegs && (l.includes('squat') || l.includes('leg') || l.includes('lower'))) lastLegs = daysAgo;
+    if (!lastPush && (l.includes('bench') || l.includes('press') || l.includes('ohp'))) lastPush = daysAgo;
+    if (!lastPull && (l.includes('deadlift') || l.includes('row') || l.includes('pull') || l.includes('back'))) lastPull = daysAgo;
+  }
+
+  const pct = (daysAgo, healDays) => {
+    if (daysAgo === null) return 1.0;
+    return Math.min(daysAgo / healDays, 1.0);
+  };
+
+  return [
+    { label: 'Legs',  color: '#57f0c0', trackColor: 'rgba(87,240,192,0.13)',  r: 42, pct: pct(lastLegs, HEAL.legs) },
+    { label: 'Push',  color: '#57a5ff', trackColor: 'rgba(87,165,255,0.13)',  r: 57, pct: pct(lastPush, HEAL.push) },
+    { label: 'Pull',  color: '#8f7cff', trackColor: 'rgba(143,124,255,0.13)', r: 72, pct: pct(lastPull, HEAL.pull) },
+  ];
+}
+
+/* ─── Recovery Rings ─── */
+function RecoveryRings({ rings }) {
+  const size = 152;
+  const cx = size / 2, cy = size / 2;
+  const strokeW = 9;
+  const avgPct = Math.round(rings.reduce((s, r) => s + r.pct, 0) / rings.length * 100);
+
+  return (
+    <div className="home-recovery-wrap">
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ display: 'block' }}>
+        {rings.map(({ color, trackColor, r, pct }) => {
+          const circ = 2 * Math.PI * r;
+          const offset = circ * (1 - pct);
+          return (
+            <g key={r}>
+              <circle cx={cx} cy={cy} r={r} fill="none" stroke={trackColor} strokeWidth={strokeW} />
+              <circle cx={cx} cy={cy} r={r} fill="none"
+                stroke={color} strokeWidth={strokeW} strokeLinecap="round"
+                strokeDasharray={circ} strokeDashoffset={offset}
+                transform={`rotate(-90 ${cx} ${cy})`}
+                style={{ transition: 'stroke-dashoffset 0.7s ease' }}
+              />
+            </g>
+          );
+        })}
+        <text x={cx} y={cy - 7} textAnchor="middle" fill="rgba(247,249,255,0.92)"
+          fontSize="18" fontWeight="700" fontFamily="'Space Grotesk', sans-serif">{avgPct}%</text>
+        <text x={cx} y={cy + 10} textAnchor="middle" fill="rgba(216,226,255,0.45)"
+          fontSize="9.5" fontWeight="600" fontFamily="'Inter', sans-serif">recovery</text>
+      </svg>
+      <div className="home-recovery-legend">
+        {rings.map(({ label, color, pct }) => (
+          <div key={label} className="home-recovery-leg-item">
+            <span className="home-recovery-leg-dot" style={{ background: color }} />
+            <span className="home-recovery-leg-label">{label}</span>
+            <span className="home-recovery-leg-pct" style={{ color }}>{Math.round(pct * 100)}%</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /* ─── Mini Calorie Ring ─── */
 function MiniCalorieRing({ consumed, goal }) {
-  const radius = 34;
-  const stroke = 6;
+  const radius = 32, stroke = 6;
   const norm = radius - stroke / 2;
   const circ = 2 * Math.PI * norm;
   const pct = Math.min(consumed / goal, 1);
   const offset = circ * (1 - pct);
   const isOver = consumed > goal;
   const color = isOver ? '#ff9f63' : pct > 0.85 ? '#ffd84d' : '#57f0c0';
-
   return (
-    <svg width={radius * 2} height={radius * 2} style={{ display: 'block', flexShrink: 0 }}>
+    <svg width={radius*2} height={radius*2} style={{ display:'block', flexShrink:0 }}>
       <circle cx={radius} cy={radius} r={norm} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth={stroke} />
-      <circle
-        cx={radius} cy={radius} r={norm} fill="none"
+      <circle cx={radius} cy={radius} r={norm} fill="none"
         stroke={color} strokeWidth={stroke} strokeLinecap="round"
         strokeDasharray={circ} strokeDashoffset={offset}
         transform={`rotate(-90 ${radius} ${radius})`}
-        style={{ transition: 'stroke-dashoffset 0.5s ease, stroke 0.4s ease' }}
+        style={{ transition: 'stroke-dashoffset 0.5s ease' }}
       />
-      <text x={radius} y={radius - 5} textAnchor="middle" fill="#f7f9ff"
+      <text x={radius} y={radius - 4} textAnchor="middle" fill="#f7f9ff"
         fontSize="10" fontWeight="700" fontFamily="'Space Grotesk', sans-serif">
         {consumed.toLocaleString()}
       </text>
       <text x={radius} y={radius + 7} textAnchor="middle" fill="rgba(216,226,255,0.5)"
-        fontSize="7.5" fontWeight="600" fontFamily="'Inter', sans-serif">
-        / {goal.toLocaleString()}
+        fontSize="7" fontWeight="600" fontFamily="'Inter', sans-serif">
+        /{goal.toLocaleString()}
       </text>
     </svg>
   );
 }
 
-/* ─── Sparkline (unchanged) ─── */
+/* ─── Sparkline ─── */
 function Sparkline({ points }) {
-  const width = 120;
-  const height = 42;
-  const max = Math.max(...points);
-  const min = Math.min(...points);
+  const W = 100, H = 36;
+  const max = Math.max(...points), min = Math.min(...points);
   const range = Math.max(max - min, 1);
-
   const coords = points.map((p, i) => {
-    const x = (i / (points.length - 1)) * width;
-    const y = height - ((p - min) / range) * (height - 8) - 4;
+    const x = (i / (points.length - 1)) * W;
+    const y = H - ((p - min) / range) * (H - 8) - 4;
     return `${x},${y}`;
   });
-
   return (
-    <svg className="home-sparkline" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none">
-      <polyline
-        points={coords.join(' ')}
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2.4"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
+    <svg viewBox={`0 0 ${W} ${H}`} style={{ width: 90, height: 32, flexShrink: 0 }} preserveAspectRatio="none">
+      <polyline points={coords.join(' ')} fill="none" stroke="currentColor"
+        strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
 
-function HomePage({ summary, athlete, schedule, nutrition, progress, startTodaysWorkout }) {
-  const weekCards = schedule || [];
-  const progressRows = [
-    { name: 'Deadlift', value: `${progress.deadlift[progress.deadlift.length - 1]} lb`, points: progress.deadlift },
-    { name: 'Squat',    value: `${progress.squat[progress.squat.length - 1]} lb`,    points: progress.squat },
-    { name: 'Bench',    value: `${progress.bench[progress.bench.length - 1]} lb`,    points: progress.bench },
-  ];
+/* ─── DAY_SHORT for week strip ─── */
+const DAY_SHORT = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
-  /* ── Nutrition panel data ── */
+/* ─── Main Component ─── */
+function HomePage({ summary, athlete, schedule, nutrition, progress, startTodaysWorkout, goToScreen }) {
   const todayKey = toKey(new Date());
 
-  // Find today's active bulk/cut block
-  const blocks = nutrition.bulkCutBlocks ?? [];
-  const todayBlock = blocks.find((b) => todayKey >= b.start && todayKey <= b.end) ?? null;
-  const cycleType = todayBlock?.type ?? null;
-  const goalWeight = nutrition.goalWeight ?? null;
+  /* today's schedule day */
+  const todayScheduleDay = schedule?.[0] || null;
+  const isRestDay = todayScheduleDay?.rest === true;
+  const todayLift = todayScheduleDay?.lift || null;
+  const todayType = todayScheduleDay?.type || null;
+  const dayType = isRestDay
+    ? { label: 'Rest Day', emoji: '😴', accent: '#ffd84d', sub: 'Recovery · Sleep · Light movement' }
+    : getDayType(todayLift);
 
-  // Calorie goal + today's logged meals
+  /* nutrition */
+  const blocks = nutrition?.bulkCutBlocks ?? [];
+  const todayBlock = blocks.find(b => todayKey >= b.start && todayKey <= b.end) ?? null;
+  const cycleType = todayBlock?.type ?? null;
+  const goalWeight = nutrition?.goalWeight ?? null;
   const calorieGoal = calcDailyCalories(athlete, cycleType, goalWeight);
   const todayMeals = (() => {
-    try { return JSON.parse(localStorage.getItem(`calorie-meals-${todayKey}`) || '[]'); }
-    catch { return []; }
+    try { return JSON.parse(localStorage.getItem(`calorie-meals-${todayKey}`) || '[]'); } catch { return []; }
   })();
   const caloriesConsumed = todayMeals.reduce((s, m) => s + (m.cals || 0), 0);
-  const caloriesLeft = calorieGoal - caloriesConsumed;
-  const isOver = caloriesConsumed > calorieGoal;
 
-  // Weight change summary
-  const weightLog = nutrition.weightLog ?? [];
-  const weightChange = weightLog.length >= 2
-    ? +(weightLog[weightLog.length - 1].weight - weightLog[0].weight).toFixed(1)
-    : null;
-  const weightChangeLabel = weightChange === null
-    ? null
-    : weightChange === 0
-    ? '→ no change'
-    : weightChange > 0
-    ? `+${weightChange} lbs`
-    : `${weightChange} lbs`;
-  const weightChangeColor = weightChange === null ? 'rgba(216,226,255,0.4)'
-    : cycleType === 'bulk' ? (weightChange > 0 ? '#57f0c0' : '#ff9f63')
-    : cycleType === 'cut'  ? (weightChange < 0 ? '#57f0c0' : '#ff9f63')
-    : '#ffd84d';
+  /* recovery rings */
+  const recoveryRings = computeRecovery(schedule || []);
 
-  const cycleLabel = cycleType
-    ? cycleType.charAt(0).toUpperCase() + cycleType.slice(1)
-    : 'No active cycle';
+  /* training week — next 7 days from schedule */
+  const weekDays = (schedule || []).slice(0, 7);
 
-  const cycleDotColor = { bulk: '#57a5ff', cut: '#ff6fd8', maintain: '#57f0c0' }[cycleType] || 'rgba(255,255,255,0.3)';
+  /* progress rows */
+  const progressRows = [
+    { name: 'Deadlift', value: `${progress.deadlift[progress.deadlift.length-1]} lb`, points: progress.deadlift, color: '#8f7cff' },
+    { name: 'Squat',    value: `${progress.squat[progress.squat.length-1]} lb`,    points: progress.squat,    color: '#57a5ff' },
+    { name: 'Bench',    value: `${progress.bench[progress.bench.length-1]} lb`,    points: progress.bench,    color: '#57f0c0' },
+  ];
+
+  const typeInfo = todayType ? TYPE_COLORS[todayType] : null;
+  const cycleDotColor = { bulk:'#57a5ff', cut:'#ff6fd8', maintain:'#57f0c0' }[cycleType] || 'rgba(255,255,255,0.3)';
 
   return (
     <div className="screen home-screen">
       <div className="home-shell">
-        <section className="home-top-row">
-          <div className="home-brand glass-panel">
-            <div className="home-brand-mark-wrap">
-              <div className="home-brand-orbit orbit-1" />
-              <div className="home-brand-orbit orbit-2" />
-              <div className="home-brand-fallback">★</div>
+
+        {/* ── HERO: Today's Workout ── */}
+        <section className="home-hero-workout glass-panel">
+          <div className="home-hero-eyebrow">
+            <span className="home-hero-kicker">Today · {new Date().toLocaleDateString('en-US', { weekday:'long', month:'short', day:'numeric' })}</span>
+            {typeInfo && !isRestDay && (
+              <span className="home-hero-type-pill" style={{ color: typeInfo.color, background: typeInfo.bg, borderColor: typeInfo.color + '44' }}>
+                {typeInfo.label}
+              </span>
+            )}
+          </div>
+
+          <div className="home-hero-main">
+            <div className="home-hero-left">
+              <div className="home-hero-day-emoji" style={{ color: dayType?.accent }}>
+                {dayType?.emoji}
+              </div>
+              <div className="home-hero-copy">
+                <h1 className="home-hero-day-label" style={{ color: dayType?.accent }}>
+                  {dayType?.label}
+                </h1>
+                <p className="home-hero-day-sub">{dayType?.sub}</p>
+                {todayLift && !isRestDay && (
+                  <p className="home-hero-lift-name">{todayLift}</p>
+                )}
+              </div>
             </div>
 
-            <div className="home-brand-copy">
-              <div className="home-eyebrow">Coach</div>
-              <h1 className="home-wordmark">Nova</h1>
-              <p className="home-brand-sub">
-                Precision training, cosmic energy, cleaner progress.
-              </p>
+            <div className="home-hero-right">
+              {!isRestDay ? (
+                <button className="home-start-btn" onClick={startTodaysWorkout} style={{ '--accent': dayType?.accent || '#57f0c0' }}>
+                  <span className="home-start-btn-label">Start workout</span>
+                  <span className="home-start-btn-arrow">›</span>
+                </button>
+              ) : (
+                <div className="home-rest-badge">
+                  <span>Rest up</span>
+                  <span className="home-rest-sub">See you tomorrow</span>
+                </div>
+              )}
             </div>
           </div>
 
-          <div className="home-week glass-panel">
-            <div className="home-section-head">
-              <div>
-                <div className="home-kicker">Upcoming</div>
-                <h2 className="home-section-title">Training week</h2>
-              </div>
-              <button className="home-ghost-btn" type="button">
-                {athlete.firstName} {athlete.lastName}
-              </button>
+          {summary?.topInsight && (
+            <div className="home-coach-insight">
+              <span className="home-coach-spark">✦</span>
+              <p className="home-coach-text">{summary.topInsight}</p>
             </div>
+          )}
+        </section>
 
-            <div className="home-week-strip">
-              <button className="home-strip-arrow" type="button">‹</button>
+        {/* ── TRAINING WEEK + RECOVERY ── */}
+        <section className="home-mid-row">
 
-              <div className="home-week-cards">
-                {weekCards.map((card) => (
-                  <div
-                    key={card.id}
-                    className={`home-week-card ${card.status === 'active' ? 'is-active' : ''}`}
-                  >
-                    <div className="home-week-day">{card.day}</div>
-                    <div className="home-week-date">{card.date}</div>
-                    <div className="home-week-lift">{card.title}</div>
+          {/* Week strip */}
+          <div className="home-week-panel glass-panel">
+            <div className="home-panel-head">
+              <span className="home-panel-kicker">Schedule</span>
+              <h2 className="home-panel-title">Training week</h2>
+            </div>
+            <div className="home-week-cards">
+              {weekDays.map((day, i) => {
+                const wt = day.type ? TYPE_COLORS[day.type] : null;
+                const dt = !day.rest ? getDayType(day.lift) : null;
+                const isToday = i === 0;
+                return (
+                  <div key={day.dateKey} className={`home-week-card ${isToday ? 'home-week-card-today' : ''} ${day.rest ? 'home-week-card-rest' : ''}`}
+                    style={ isToday && dt ? { borderColor: dt.accent + '55', background: dt.accent + '0d' } : {} }>
+                    <div className="home-wc-day">{DAY_SHORT[day.weekday]}</div>
+                    <div className={`home-wc-num ${isToday ? 'home-wc-num-today' : ''}`} style={ isToday && dt ? { color: dt.accent } : {} }>
+                      {day.dayNum}
+                    </div>
+                    {day.rest ? (
+                      <div className="home-wc-rest">Rest</div>
+                    ) : (
+                      <>
+                        <div className="home-wc-lift">{day.lift?.replace('Back ', '')}</div>
+                        {wt && <div className="home-wc-type" style={{ color: wt.color, background: wt.bg }}>{wt.label}</div>}
+                      </>
+                    )}
+                    {isToday && <div className="home-wc-today-dot" style={{ background: dt?.accent || '#fff' }} />}
                   </div>
-                ))}
-              </div>
-
-              <button className="home-strip-arrow" type="button">›</button>
+                );
+              })}
             </div>
+          </div>
+
+          {/* Recovery rings */}
+          <div className="home-recovery-panel glass-panel">
+            <div className="home-panel-head">
+              <span className="home-panel-kicker">Muscle status</span>
+              <h2 className="home-panel-title">Recovery</h2>
+            </div>
+            <RecoveryRings rings={recoveryRings} />
           </div>
         </section>
 
-        <section className="home-hero glass-panel">
-          <div className="home-hero-badge">Coach insight</div>
-
-          <div className="home-hero-inner">
-            <div className="home-hero-star">✦</div>
-
-            <div className="home-hero-copy">
-              <h2 className="home-hero-title">
-                Start today&apos;s workout when you&apos;re ready.
-              </h2>
-              <p className="home-hero-text">
-                {summary.topInsight}
-              </p>
-            </div>
-
-            <button className="home-start-btn" type="button" onClick={startTodaysWorkout}>
-              Start today&apos;s workout
-            </button>
-          </div>
-        </section>
-
+        {/* ── NUTRITION + PROGRESS ── */}
         <section className="home-bottom-row">
-          <div className="home-phase glass-panel">
-            <div className="home-section-head">
-              <div>
-                <div className="home-kicker">Phase</div>
-                <h2 className="home-section-title">Current focus</h2>
-              </div>
+
+          {/* Nutrition */}
+          <div className="home-nutr-panel glass-panel">
+            <div className="home-panel-head">
+              <span className="home-panel-kicker">Nutrition</span>
+              <h2 className="home-panel-title">Today's intake</h2>
+              {cycleType && (
+                <span className="home-nutr-cycle-pill">
+                  <span className="home-nutr-cycle-dot" style={{ background: cycleDotColor }} />
+                  {cycleType.charAt(0).toUpperCase() + cycleType.slice(1)}
+                </span>
+              )}
             </div>
 
-            <div className="home-phase-wheel-wrap">
-              <div className="home-phase-wheel">
-                <div className="home-phase-center">
-                  <div className="home-phase-center-top">Phase</div>
-                  <div className="home-phase-center-main">{athlete.phase}</div>
-                  <div className="home-phase-center-sub">
-                    Week {athlete.phaseWeek} / {athlete.phaseTotalWeeks}
-                  </div>
-                </div>
-
-                <div className="home-phase-node node-top">Squat</div>
-                <div className="home-phase-node node-right">Bench</div>
-                <div className="home-phase-node node-bottom active">Deadlift</div>
-                <div className="home-phase-node node-left">Pull</div>
-              </div>
-            </div>
-          </div>
-
-          {/* ── Nutrition panel — enhanced ── */}
-          <div className="home-nutrition glass-panel">
-            <div className="home-section-head">
-              <div>
-                <div className="home-kicker">Nutrition</div>
-                <h2 className="home-section-title">Today's intake</h2>
-              </div>
-              {/* Cycle badge */}
-              <div style={hn.cycleBadge}>
-                <span style={{ ...hn.cycleDot, background: cycleDotColor }} />
-                {cycleLabel}
-              </div>
-            </div>
-
-            {/* Calorie ring + stats */}
-            <div style={hn.ringRow}>
+            <div className="home-nutr-ring-row">
               <MiniCalorieRing consumed={caloriesConsumed} goal={calorieGoal} />
-
-              <div style={hn.ringStats}>
-                <div style={hn.statItem}>
-                  <span style={hn.statLabel}>Consumed</span>
-                  <span style={hn.statVal}>{caloriesConsumed.toLocaleString()} <span style={hn.statUnit}>kcal</span></span>
+              <div className="home-nutr-stats">
+                <div className="home-nutr-stat">
+                  <span className="home-nutr-stat-label">Consumed</span>
+                  <span className="home-nutr-stat-val">{caloriesConsumed.toLocaleString()} <span className="home-nutr-stat-unit">kcal</span></span>
                 </div>
-                <div style={hn.statItem}>
-                  <span style={hn.statLabel}>{isOver ? 'Over by' : 'Remaining'}</span>
-                  <span style={{ ...hn.statVal, color: isOver ? '#ff9f63' : '#57f0c0' }}>
-                    {Math.abs(caloriesLeft).toLocaleString()} <span style={hn.statUnit}>kcal</span>
+                <div className="home-nutr-stat">
+                  <span className="home-nutr-stat-label">{caloriesConsumed > calorieGoal ? 'Over by' : 'Remaining'}</span>
+                  <span className="home-nutr-stat-val" style={{ color: caloriesConsumed > calorieGoal ? '#ff9f63' : '#57f0c0' }}>
+                    {Math.abs(calorieGoal - caloriesConsumed).toLocaleString()} <span className="home-nutr-stat-unit">kcal</span>
                   </span>
                 </div>
-                <div style={hn.statItem}>
-                  <span style={hn.statLabel}>Target</span>
-                  <span style={hn.statVal}>{calorieGoal.toLocaleString()} <span style={hn.statUnit}>kcal</span></span>
+                <div className="home-nutr-stat">
+                  <span className="home-nutr-stat-label">Target</span>
+                  <span className="home-nutr-stat-val">{calorieGoal.toLocaleString()} <span className="home-nutr-stat-unit">kcal</span></span>
                 </div>
               </div>
             </div>
 
-            {/* Meals logged today */}
-            {todayMeals.length > 0 && (
-              <div style={hn.mealsPreview}>
-                {todayMeals.slice(0, 3).map((m) => (
-                  <div key={m.id} style={hn.mealChip}>
-                    <span style={hn.mealChipName}>{m.name}</span>
-                    <span style={hn.mealChipCal}>{m.cals} kcal</span>
+            {todayMeals.length > 0 ? (
+              <div className="home-nutr-meals">
+                {todayMeals.slice(0, 3).map(m => (
+                  <div key={m.id} className="home-nutr-meal-row">
+                    <span className="home-nutr-meal-name">{m.name}</span>
+                    <span className="home-nutr-meal-cal">{m.cals} kcal</span>
                   </div>
                 ))}
-                {todayMeals.length > 3 && (
-                  <div style={hn.mealChipMore}>+{todayMeals.length - 3} more</div>
-                )}
+                {todayMeals.length > 3 && <div className="home-nutr-meal-more">+{todayMeals.length - 3} more meals</div>}
               </div>
-            )}
-
-            {todayMeals.length === 0 && (
-              <div style={hn.noMeals}>No meals logged yet today</div>
-            )}
-
-            {/* Weight change summary */}
-            {weightChangeLabel && (
-              <div style={hn.weightRow}>
-                <span style={hn.weightLabel}>Weight change</span>
-                <span style={{ ...hn.weightVal, color: weightChangeColor }}>
-                  {weightChangeLabel}
-                </span>
-                {goalWeight && (
-                  <span style={hn.weightGoal}>goal {goalWeight} lbs</span>
-                )}
-              </div>
-            )}
-
-            {!weightChangeLabel && (
-              <div style={hn.noWeight}>Log a weigh-in on the Nutrition page to track progress</div>
+            ) : (
+              <div className="home-nutr-empty">No meals logged yet — <button className="home-nutr-link" onClick={() => goToScreen?.('nutrition')}>go to nutrition →</button></div>
             )}
           </div>
 
-          <div className="home-progress glass-panel">
-            <div className="home-section-head">
-              <div>
-                <div className="home-kicker">Progress</div>
-                <h2 className="home-section-title">Recent trends</h2>
-              </div>
+          {/* Progress */}
+          <div className="home-progress-panel glass-panel">
+            <div className="home-panel-head">
+              <span className="home-panel-kicker">Progress</span>
+              <h2 className="home-panel-title">Recent trends</h2>
             </div>
-
             <div className="home-progress-list">
-              {progressRows.map((row) => (
+              {progressRows.map(row => (
                 <div key={row.name} className="home-progress-row">
                   <div className="home-progress-meta">
-                    <div className="home-progress-name">{row.name}</div>
-                    <div className="home-progress-value">{row.value}</div>
+                    <span className="home-progress-name">{row.name}</span>
+                    <span className="home-progress-val" style={{ color: row.color }}>{row.value}</span>
                   </div>
-                  <Sparkline points={row.points} />
+                  <div style={{ color: row.color }}>
+                    <Sparkline points={row.points} />
+                  </div>
                 </div>
               ))}
             </div>
           </div>
+
         </section>
       </div>
     </div>
   );
 }
-
-/* ── Inline styles for the enhanced nutrition panel (scoped, no CSS conflicts) ── */
-const hn = {
-  cycleBadge: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 6,
-    padding: '4px 10px',
-    borderRadius: 999,
-    background: 'rgba(255,255,255,0.07)',
-    border: '1px solid rgba(255,255,255,0.1)',
-    fontSize: '0.7rem',
-    fontWeight: 700,
-    color: 'rgba(247,249,255,0.7)',
-    fontFamily: "'Inter', sans-serif",
-    whiteSpace: 'nowrap',
-  },
-  cycleDot: {
-    width: 7, height: 7, borderRadius: '50%', flexShrink: 0, display: 'inline-block',
-  },
-  ringRow: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 16,
-    margin: '12px 0 10px',
-  },
-  ringStats: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 6,
-    flex: 1,
-  },
-  statItem: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  statLabel: {
-    fontSize: '0.72rem',
-    fontWeight: 600,
-    color: 'rgba(216,226,255,0.5)',
-    fontFamily: "'Inter', sans-serif",
-  },
-  statVal: {
-    fontSize: '0.86rem',
-    fontWeight: 700,
-    color: '#f7f9ff',
-    fontFamily: "'Space Grotesk', sans-serif",
-  },
-  statUnit: {
-    fontSize: '0.68rem',
-    fontWeight: 600,
-    color: 'rgba(216,226,255,0.45)',
-    fontFamily: "'Inter', sans-serif",
-  },
-  mealsPreview: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 5,
-    marginBottom: 10,
-  },
-  mealChip: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: '6px 10px',
-    borderRadius: 10,
-    background: 'rgba(255,255,255,0.05)',
-    border: '1px solid rgba(255,255,255,0.08)',
-  },
-  mealChipName: {
-    fontSize: '0.76rem',
-    fontWeight: 600,
-    color: 'rgba(247,249,255,0.78)',
-    fontFamily: "'Inter', sans-serif",
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-    maxWidth: '70%',
-  },
-  mealChipCal: {
-    fontSize: '0.72rem',
-    fontWeight: 700,
-    color: '#57f0c0',
-    fontFamily: "'Inter', sans-serif",
-    whiteSpace: 'nowrap',
-  },
-  mealChipMore: {
-    fontSize: '0.7rem',
-    fontWeight: 700,
-    color: 'rgba(216,226,255,0.4)',
-    fontFamily: "'Inter', sans-serif",
-    paddingLeft: 10,
-  },
-  noMeals: {
-    fontSize: '0.74rem',
-    fontWeight: 600,
-    color: 'rgba(216,226,255,0.35)',
-    fontFamily: "'Inter', sans-serif",
-    marginBottom: 8,
-  },
-  weightRow: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 8,
-    padding: '8px 10px',
-    borderRadius: 12,
-    background: 'rgba(255,255,255,0.05)',
-    border: '1px solid rgba(255,255,255,0.08)',
-    marginTop: 4,
-    flexWrap: 'wrap',
-  },
-  weightLabel: {
-    fontSize: '0.72rem',
-    fontWeight: 600,
-    color: 'rgba(216,226,255,0.5)',
-    fontFamily: "'Inter', sans-serif",
-    flex: 1,
-  },
-  weightVal: {
-    fontSize: '0.9rem',
-    fontWeight: 800,
-    fontFamily: "'Space Grotesk', sans-serif",
-  },
-  weightGoal: {
-    fontSize: '0.68rem',
-    fontWeight: 600,
-    color: 'rgba(216,226,255,0.35)',
-    fontFamily: "'Inter', sans-serif",
-  },
-  noWeight: {
-    fontSize: '0.72rem',
-    fontWeight: 600,
-    color: 'rgba(216,226,255,0.3)',
-    fontFamily: "'Inter', sans-serif",
-    marginTop: 6,
-    lineHeight: 1.4,
-  },
-};
 
 export default HomePage;
