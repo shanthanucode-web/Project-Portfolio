@@ -607,18 +607,10 @@ function HomePage({
           onWeekChange={setWeekOffset}
         />
 
-        {/* ── RECOVERY ── */}
+        {/* ── PROGRESS + RECOVERY ── */}
         <section className="home-mid-row">
-          <div className="home-recovery-panel glass-panel" style={{ flex: 1 }}>
-            <div className="home-panel-head">
-              <span className="home-panel-kicker">Muscle status</span>
-              <h2 className="home-panel-title">Recovery</h2>
-            </div>
-            <RecoveryRings rings={recoveryRings} />
-          </div>
-
-          {/* ── PROGRESS ── */}
-          <div className="home-progress-panel glass-panel" style={{ flex: 1 }}>
+          {/* Progress: wide 1fr column (first in CSS grid) */}
+          <div className="home-progress-panel glass-panel">
             <div className="home-panel-head">
               <span className="home-panel-kicker">Progress</span>
               <h2 className="home-panel-title">Recent trends</h2>
@@ -636,6 +628,15 @@ function HomePage({
                 </div>
               ))}
             </div>
+          </div>
+
+          {/* Recovery: narrow 200px column (second in CSS grid) */}
+          <div className="home-recovery-panel glass-panel">
+            <div className="home-panel-head">
+              <span className="home-panel-kicker">Muscle status</span>
+              <h2 className="home-panel-title">Recovery</h2>
+            </div>
+            <RecoveryRings rings={recoveryRings} />
           </div>
         </section>
 
