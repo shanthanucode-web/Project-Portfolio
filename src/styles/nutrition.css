@@ -233,9 +233,20 @@
   transform: translateY(-1px);
 }
 .nutr-day-past {
-   opacity: 0.38;
-   pointer-events: all;
-   cursor: pointer;
+  opacity: 0.38;
+  cursor: default;
+  pointer-events: none;
+}
+
+/* ADD this beneath it: */
+.nutr-day-past .nutr-weight-btn {
+  pointer-events: all;
+  cursor: pointer;
+}
+
+.nutr-day-past .nutr-droplet {
+  pointer-events: all;
+  cursor: pointer;
 }
 
 /* type colours */
