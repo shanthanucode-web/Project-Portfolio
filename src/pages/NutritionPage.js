@@ -1654,7 +1654,15 @@ export default function NutritionPage({ athlete, nutrition, setNutrition, goToSc
                           'nutr-weight-btn',
                           (nutrition.weightLog ?? []).some((e) => e.date === key) ? 'nutr-weight-btn-logged' : '',
                         ].join(' ').trim()}
-                        onClick={(e) => { e.stopPropagation(); handleDayClick(date); }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const key = toKey(date);
+                          const existing = (nutrition.weightLog ?? []).find((e) => e.date === key);
+                          setWeightLogDate(date);
+                          setWeightLogValue(existing ? String(existing.weight) : '');
+                          setWeightLogErr('');
+                          setShowWeightLogModal(true);
+                        }}
                         title={
                           (nutrition.weightLog ?? []).some((e) => e.date === key)
                             ? `Edit weight · ${(nutrition.weightLog.find(e => e.date === key))?.weight} lbs`
