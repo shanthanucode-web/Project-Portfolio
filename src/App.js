@@ -48,7 +48,6 @@ const DEFAULT_CHAT = [
 
 function App() {
   const [screen, setScreen] = useState('home');
-  const [screenHistory, setScreenHistory] = useState([]);
 
   const [athlete, setAthlete] = useState(DEFAULT_ATHLETE);
   const [nutrition, setNutrition] = useState(DEFAULT_NUTRITION);
@@ -56,59 +55,38 @@ function App() {
   const [chatMessages, setChatMessages] = useState(DEFAULT_CHAT);
   const [workoutHistory, setWorkoutHistory] = useState([]);
 
-  // ─── Live schedule state — single source of truth ───────────────
-  // Initially built from athlete + nutrition. Can be overridden by AI chat.
   const [calendarSchedule, setCalendarSchedule] = useState(() =>
     buildSchedule(DEFAULT_ATHLETE, DEFAULT_NUTRITION)
   );
-
-  // Blocked days live here at App level so chat/calendar stay in sync
   const [blockedDays, setBlockedDays] = useState(new Set());
-
   const [activeWorkout, setActiveWorkout] = useState(null);
   const [lastWorkoutSummary, setLastWorkoutSummary] = useState(null);
-
-  // ─── Rebuild calendar when athlete profile or nutrition changes ──
-  // But preserve any AI-injected overrides (newSchedule from chat)
-  // We track whether the schedule was last set by AI or by build
-  const [scheduleSource, setScheduleSource] = useState('built'); // 'built' | 'ai'
+  const [scheduleSource, setScheduleSource] = useState('built');
 
   useEffect(() => {
-    // When athlete or nutrition changes, always rebuild from source
-    // (AI override resets — profile change is more authoritative)
     const rebuilt = buildSchedule(athlete, nutrition);
     setCalendarSchedule(rebuilt);
     setScheduleSource('built');
   }, [athlete, nutrition]);
 
-  // ─── Schedule mutation from AI chat ─────────────────────────────
-  // Called by ChatPage when AI returns a newSchedule
   const applyAISchedule = useCallback((newScheduleDays) => {
-    // newScheduleDays is the minimal format from getChatCoachReply:
-    // [{ lift, type, cal, rest }, ...] — 14 entries
-    // We need to merge with the existing schedule to fill in dates, accessories, etc.
     const base = buildSchedule(athlete, nutrition);
-
     const merged = base.map((day, i) => {
       const override = newScheduleDays[i];
       if (!override) return day;
       return {
         ...day,
-        lift:    override.rest ? null : (override.lift ?? day.lift),
-        type:    override.rest ? null : (override.type ?? day.type),
-        rest:    !!override.rest,
-        // Preserve accessories if same lift, clear if different
-        accessories: (override.lift && override.lift !== day.lift) ? [] : day.accessories,
-        // AI caloric delta overrides if provided
+        lift:         override.rest ? null : (override.lift ?? day.lift),
+        type:         override.rest ? null : (override.type ?? day.type),
+        rest:         !!override.rest,
+        accessories:  (override.lift && override.lift !== day.lift) ? [] : day.accessories,
         caloricDelta: override.cal ?? day.caloricDelta,
       };
     });
-
     setCalendarSchedule(merged);
     setScheduleSource('ai');
   }, [athlete, nutrition]);
 
-  // ─── Block day handler (used by both calendar and chat) ──────────
   const toggleBlockedDay = useCallback((dateKey) => {
     setBlockedDays(prev => {
       const next = new Set(prev);
@@ -120,20 +98,8 @@ function App() {
   // ─── Navigation ──────────────────────────────────────────────────
   const goToScreen = (nextScreen) => {
     if (nextScreen === screen) return;
-    setScreenHistory((prev) => [...prev, screen]);
     setScreen(nextScreen);
   };
-
-  const goBack = () => {
-    setScreenHistory((prev) => {
-      if (prev.length === 0) { setScreen('home'); return prev; }
-      const last = prev[prev.length - 1];
-      setScreen(last);
-      return prev.slice(0, -1);
-    });
-  };
-
-  const canGoBack = screen !== 'home' || screenHistory.length > 0;
 
   const athleteName = useMemo(() =>
     `${athlete.firstName} ${athlete.lastName}`.trim(),
@@ -163,7 +129,6 @@ function App() {
       liveCoachMessage: 'Waiting for first rep...',
     });
     setLastWorkoutSummary(null);
-    setScreenHistory((prev) => [...prev, 'home']);
     setScreen('liveWorkout');
   };
 
@@ -185,7 +150,6 @@ function App() {
       completedAt: new Date().toISOString(),
     };
     setLastWorkoutSummary(summary);
-    setScreenHistory((prev) => [...prev, 'liveWorkout']);
     setScreen('workoutSummary');
   };
 
@@ -203,11 +167,9 @@ function App() {
     }, ...prev]);
     setActiveWorkout(null);
     setLastWorkoutSummary(null);
-    setScreenHistory([]);
     setScreen('home');
   };
 
-  // ─── Home summary ─────────────────────────────────────────────────
   const homeSummary = useMemo(() => ({
     athleteName,
     today: calendarSchedule[0] || null,
@@ -220,9 +182,9 @@ function App() {
     workoutHistoryCount: workoutHistory.length,
   }), [athleteName, calendarSchedule, nutrition, chatMessages, progress, lastWorkoutSummary, workoutHistory]);
 
+  // Calendar removed from nav — it's embedded in the home page now
   const navItems = [
     { key: 'home',      label: 'Home'      },
-    { key: 'calendar',  label: 'Calendar'  },
     { key: 'nutrition', label: 'Nutrition' },
     { key: 'chat',      label: 'Coach'     },
     { key: 'profile',   label: 'Profile'   },
@@ -236,7 +198,6 @@ function App() {
         <div className="topnav">
           <div className="logo"><span>Coach Nova</span></div>
           <div className="nav-right">
-            {canGoBack && <button type="button" onClick={goBack}>Back</button>}
             {navItems.map((item) => (
               <button key={item.key} type="button" onClick={() => goToScreen(item.key)}>
                 {item.label}
@@ -254,6 +215,8 @@ function App() {
             schedule={calendarSchedule}
             nutrition={nutrition}
             progress={progress}
+            blockedDays={blockedDays}
+            onBlockToggle={toggleBlockedDay}
             goToScreen={goToScreen}
             startTodaysWorkout={startTodaysWorkout}
           />
@@ -266,7 +229,6 @@ function App() {
             schedule={calendarSchedule}
             blockedDays={blockedDays}
             onBlockToggle={toggleBlockedDay}
-            goBack={goBack}
             goToScreen={goToScreen}
           />
         )}
@@ -276,7 +238,6 @@ function App() {
             athlete={athlete}
             nutrition={nutrition}
             setNutrition={setNutrition}
-            goBack={goBack}
             goToScreen={goToScreen}
           />
         )}
@@ -292,7 +253,6 @@ function App() {
             blockedDays={blockedDays}
             onApplySchedule={applyAISchedule}
             onBlockDay={toggleBlockedDay}
-            goBack={goBack}
             goToScreen={goToScreen}
           />
         )}
@@ -301,7 +261,6 @@ function App() {
           <ProfilePage
             athlete={athlete}
             setAthlete={setAthlete}
-            goBack={goBack}
             goToScreen={goToScreen}
           />
         )}
@@ -312,7 +271,6 @@ function App() {
             activeWorkout={activeWorkout}
             setActiveWorkout={setActiveWorkout}
             finishWorkout={finishWorkout}
-            goBack={goBack}
           />
         )}
 
@@ -321,7 +279,6 @@ function App() {
             athlete={athlete}
             summary={lastWorkoutSummary}
             logWorkout={logWorkout}
-            goBack={goBack}
           />
         )}
       </div>
