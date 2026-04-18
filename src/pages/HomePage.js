@@ -233,8 +233,9 @@ function FullWeekStrip({ days, blocked, onDayClick, onBlockToggle, accDone, week
                       style={{
                         width: 136, height: 136, objectFit: 'contain',
                         filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.4))',
-                        margin: '2px 0',
+                        margin: '2px auto',
                         flexShrink: 0,
+                        display: 'block'
                       }}
                     />
                   )}
