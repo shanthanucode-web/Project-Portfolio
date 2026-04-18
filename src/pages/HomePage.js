@@ -20,6 +20,21 @@ const WORKOUT_TYPES = {
 };
 
 // ─────────────────────────────────────────────────────────────
+// LIFT IMAGE MAP
+// ─────────────────────────────────────────────────────────────
+
+function getLiftImage(lift) {
+  if (!lift) return null;
+  const l = lift.toLowerCase();
+  if (l.includes('front squat'))                                          return '/frontsquat.png';
+  if (l.includes('squat') || l.includes('leg') || l.includes('lower'))   return '/backsquat.png';
+  if (l.includes('overhead') || l.includes('ohp'))                        return '/overhead.png';
+  if (l.includes('bench') || l.includes('chest') || l.includes('push'))  return '/bench.png';
+  if (l.includes('deadlift') || l.includes('pull') || l.includes('back') || l.includes('row')) return '/deadlift.png';
+  return null;
+}
+
+// ─────────────────────────────────────────────────────────────
 // HELPERS
 // ─────────────────────────────────────────────────────────────
 
@@ -73,28 +88,42 @@ const TYPE_COLORS = {
 };
 
 function computeRecovery(schedule) {
-  const HEAL = { legs: 3, push: 2, pull: 2 };
+  // Hours needed by [muscle group][workout type]
+  const HEAL_HOURS = {
+    legs: { pr: 96, strength: 72, power: 72, hypertrophy: 60, endurance: 48, buildup: 48, deload: 24, recovery: 24 },
+    push: { pr: 72, strength: 60, power: 60, hypertrophy: 48, endurance: 36, buildup: 36, deload: 24, recovery: 24 },
+    pull: { pr: 72, strength: 60, power: 60, hypertrophy: 48, endurance: 36, buildup: 36, deload: 24, recovery: 24 },
+  };
+  const DEFAULT_HOURS = { legs: 48, push: 48, pull: 48 };
+
   const now = new Date(); now.setHours(0,0,0,0);
   let lastLegs = null, lastPush = null, lastPull = null;
+
   for (const day of [...schedule].reverse()) {
-    if (day.rest || !day.lift) continue;
-    const l = (day.lift || '').toLowerCase();
-    const daysAgo = Math.round((now - day.date) / 86400000);
-    if (daysAgo < 0) continue;
-    if (!lastLegs && (l.includes('squat') || l.includes('leg') || l.includes('lower'))) lastLegs = daysAgo;
-    if (!lastPush && (l.includes('bench') || l.includes('press') || l.includes('ohp')))  lastPush = daysAgo;
-    if (!lastPull && (l.includes('deadlift') || l.includes('row') || l.includes('pull') || l.includes('back'))) lastPull = daysAgo;
+    if (day.rest || !day.lift || !day.date) continue;
+    const l = day.lift.toLowerCase();
+    const hoursAgo = (now - day.date) / 3600000;
+    if (hoursAgo < 0) continue;
+
+    if (!lastLegs && (l.includes('squat') || l.includes('leg') || l.includes('lower')))
+      lastLegs = { hoursAgo, healHours: HEAL_HOURS.legs[day.type] ?? DEFAULT_HOURS.legs };
+    if (!lastPush && (l.includes('bench') || l.includes('press') || l.includes('ohp')))
+      lastPush = { hoursAgo, healHours: HEAL_HOURS.push[day.type] ?? DEFAULT_HOURS.push };
+    if (!lastPull && (l.includes('deadlift') || l.includes('row') || l.includes('pull') || l.includes('back')))
+      lastPull = { hoursAgo, healHours: HEAL_HOURS.pull[day.type] ?? DEFAULT_HOURS.pull };
   }
-  const pct = (daysAgo, healDays) => daysAgo === null ? 1.0 : Math.min(daysAgo / healDays, 1.0);
+
+  const pct = (entry) => entry === null ? 1.0 : Math.min(entry.hoursAgo / entry.healHours, 1.0);
+
   return [
-    { label: 'Legs', color: '#57f0c0', trackColor: 'rgba(87,240,192,0.13)',  r: 42, pct: pct(lastLegs, HEAL.legs) },
-    { label: 'Push', color: '#57a5ff', trackColor: 'rgba(87,165,255,0.13)',  r: 57, pct: pct(lastPush, HEAL.push) },
-    { label: 'Pull', color: '#8f7cff', trackColor: 'rgba(143,124,255,0.13)', r: 72, pct: pct(lastPull, HEAL.pull) },
+    { label: 'Legs', color: '#57f0c0', trackColor: 'rgba(87,240,192,0.13)',  r: 42, pct: pct(lastLegs) },
+    { label: 'Push', color: '#57a5ff', trackColor: 'rgba(87,165,255,0.13)',  r: 57, pct: pct(lastPush) },
+    { label: 'Pull', color: '#8f7cff', trackColor: 'rgba(143,124,255,0.13)', r: 72, pct: pct(lastPull) },
   ];
 }
 
 // ─────────────────────────────────────────────────────────────
-// FULL WEEK STRIP  (lifted from CalendarPage, week-aware)
+// FULL WEEK STRIP
 // ─────────────────────────────────────────────────────────────
 
 function FullWeekStrip({ days, blocked, onDayClick, onBlockToggle, accDone, weekOffset, onWeekChange }) {
@@ -113,8 +142,6 @@ function FullWeekStrip({ days, blocked, onDayClick, onBlockToggle, accDone, week
 
   return (
     <div className="home-full-calendar glass-panel" style={{ padding: '20px 20px 18px' }}>
-
-      {/* Header: title left, week nav right */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, gap: 12 }}>
         <div>
           <div style={{ fontSize: '0.6rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.2em', color: 'rgba(216,226,255,0.4)', fontFamily: "'Inter', sans-serif", marginBottom: 3 }}>
@@ -145,7 +172,6 @@ function FullWeekStrip({ days, blocked, onDayClick, onBlockToggle, accDone, week
         </div>
       </div>
 
-      {/* Day cards */}
       <div className="cal-week-strip">
         {days.map(day => {
           const isBlocked = blocked.has(day.dateKey);
@@ -159,6 +185,8 @@ function FullWeekStrip({ days, blocked, onDayClick, onBlockToggle, accDone, week
             day.bulkCutBlock?.type === 'bulk'     ? '#57f0c0' :
             day.bulkCutBlock?.type === 'cut'      ? '#ff9f63' :
             day.bulkCutBlock?.type === 'maintain' ? '#57a5ff' : null;
+
+          const liftImg = !day.rest && !isBlocked ? getLiftImage(day.lift) : null;
 
           return (
             <div
@@ -211,6 +239,20 @@ function FullWeekStrip({ days, blocked, onDayClick, onBlockToggle, accDone, week
                 </>
               ) : (
                 <>
+                  {/* Lift image if available, otherwise just show lift name */}
+                  {liftImg && (
+                    <img
+                      src={liftImg}
+                      alt={day.lift}
+                      style={{
+                        width: 136, height: 136, objectFit: 'contain',
+                        filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.4))',
+                        margin: '2px auto',
+                        flexShrink: 0,
+                        display: 'block'
+                      }}
+                    />
+                  )}
                   <div className="cal-day-lift">{day.lift}</div>
                   {wt && <div className="cal-day-type" style={{ color: wt.color }}>{wt.label}</div>}
                   {bulkCutColor && (
@@ -235,7 +277,7 @@ function FullWeekStrip({ days, blocked, onDayClick, onBlockToggle, accDone, week
 }
 
 // ─────────────────────────────────────────────────────────────
-// DAY MODAL  (same as calendar page)
+// DAY MODAL
 // ─────────────────────────────────────────────────────────────
 
 function DayModal({ day, athlete, onClose, onBlock, onStartLift, onToggleAcc, accDone }) {
@@ -492,7 +534,6 @@ function HomePage({
 }) {
   const todayKey = toKey(new Date());
 
-  // Local state for the calendar section
   const [weekOffset, setWeekOffset] = useState(0);
   const [accDone,    setAccDone]    = useState({});
   const [modalDay,   setModalDay]   = useState(null);
@@ -504,10 +545,8 @@ function HomePage({
     }));
   }, []);
 
-  // Visible 7 days based on week offset
   const visibleDays = (schedule || []).slice(weekOffset * 7, weekOffset * 7 + 7);
 
-  /* today's data */
   const todayScheduleDay = schedule?.[0] || null;
   const isRestDay = todayScheduleDay?.rest === true;
   const todayLift = todayScheduleDay?.lift || null;
@@ -516,7 +555,9 @@ function HomePage({
     ? { label: 'Rest Day', emoji: '😴', accent: '#ffd84d', sub: 'Recovery · Sleep · Light movement' }
     : getDayType(todayLift);
 
-  /* nutrition */
+  // Hero lift image
+  const heroLiftImage = !isRestDay ? getLiftImage(todayLift) : null;
+
   const blocks = nutrition?.bulkCutBlocks ?? [];
   const todayBlock = blocks.find(b => todayKey >= b.start && todayKey <= b.end) ?? null;
   const cycleType = todayBlock?.type ?? null;
@@ -558,8 +599,22 @@ function HomePage({
 
           <div className="home-hero-main">
             <div className="home-hero-left">
+              {/* Lift image if we have one, otherwise fall back to emoji */}
               <div className="home-hero-day-emoji" style={{ color: dayType?.accent }}>
-                {dayType?.emoji}
+                {heroLiftImage ? (
+                  <img
+                    src={heroLiftImage}
+                    alt={todayLift}
+                    style={{
+                      width: 232, height: 232,
+                      objectFit: 'contain',
+                      filter: 'drop-shadow(0 4px 16px rgba(0,0,0,0.45))',
+                      display: 'block',
+                    }}
+                  />
+                ) : (
+                  dayType?.emoji
+                )}
               </div>
               <div className="home-hero-copy">
                 <h1 className="home-hero-day-label" style={{ color: dayType?.accent }}>
@@ -609,7 +664,6 @@ function HomePage({
 
         {/* ── PROGRESS + RECOVERY ── */}
         <section className="home-mid-row">
-          {/* Progress: wide 1fr column (first in CSS grid) */}
           <div className="home-progress-panel glass-panel">
             <div className="home-panel-head">
               <span className="home-panel-kicker">Progress</span>
@@ -630,7 +684,6 @@ function HomePage({
             </div>
           </div>
 
-          {/* Recovery: narrow 200px column (second in CSS grid) */}
           <div className="home-recovery-panel glass-panel">
             <div className="home-panel-head">
               <span className="home-panel-kicker">Muscle status</span>
