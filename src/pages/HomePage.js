@@ -591,7 +591,7 @@ function HomePage({
                     src={heroLiftImage}
                     alt={todayLift}
                     style={{
-                      width: 72, height: 72,
+                      width: 172, height: 172,
                       objectFit: 'contain',
                       filter: 'drop-shadow(0 4px 16px rgba(0,0,0,0.45))',
                       display: 'block',
