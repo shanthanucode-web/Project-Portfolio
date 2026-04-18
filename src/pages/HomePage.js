@@ -88,23 +88,37 @@ const TYPE_COLORS = {
 };
 
 function computeRecovery(schedule) {
-  const HEAL = { legs: 3, push: 2, pull: 2 };
+  // Hours needed by [muscle group][workout type]
+  const HEAL_HOURS = {
+    legs: { pr: 96, strength: 72, power: 72, hypertrophy: 60, endurance: 48, buildup: 48, deload: 24, recovery: 24 },
+    push: { pr: 72, strength: 60, power: 60, hypertrophy: 48, endurance: 36, buildup: 36, deload: 24, recovery: 24 },
+    pull: { pr: 72, strength: 60, power: 60, hypertrophy: 48, endurance: 36, buildup: 36, deload: 24, recovery: 24 },
+  };
+  const DEFAULT_HOURS = { legs: 48, push: 48, pull: 48 };
+
   const now = new Date(); now.setHours(0,0,0,0);
   let lastLegs = null, lastPush = null, lastPull = null;
+
   for (const day of [...schedule].reverse()) {
-    if (day.rest || !day.lift) continue;
-    const l = (day.lift || '').toLowerCase();
-    const daysAgo = Math.round((now - day.date) / 86400000);
-    if (daysAgo < 0) continue;
-    if (!lastLegs && (l.includes('squat') || l.includes('leg') || l.includes('lower'))) lastLegs = daysAgo;
-    if (!lastPush && (l.includes('bench') || l.includes('press') || l.includes('ohp')))  lastPush = daysAgo;
-    if (!lastPull && (l.includes('deadlift') || l.includes('row') || l.includes('pull') || l.includes('back'))) lastPull = daysAgo;
+    if (day.rest || !day.lift || !day.date) continue;
+    const l = day.lift.toLowerCase();
+    const hoursAgo = (now - day.date) / 3600000;
+    if (hoursAgo < 0) continue;
+
+    if (!lastLegs && (l.includes('squat') || l.includes('leg') || l.includes('lower')))
+      lastLegs = { hoursAgo, healHours: HEAL_HOURS.legs[day.type] ?? DEFAULT_HOURS.legs };
+    if (!lastPush && (l.includes('bench') || l.includes('press') || l.includes('ohp')))
+      lastPush = { hoursAgo, healHours: HEAL_HOURS.push[day.type] ?? DEFAULT_HOURS.push };
+    if (!lastPull && (l.includes('deadlift') || l.includes('row') || l.includes('pull') || l.includes('back')))
+      lastPull = { hoursAgo, healHours: HEAL_HOURS.pull[day.type] ?? DEFAULT_HOURS.pull };
   }
-  const pct = (daysAgo, healDays) => daysAgo === null ? 1.0 : Math.min(daysAgo / healDays, 1.0);
+
+  const pct = (entry) => entry === null ? 1.0 : Math.min(entry.hoursAgo / entry.healHours, 1.0);
+
   return [
-    { label: 'Legs', color: '#57f0c0', trackColor: 'rgba(87,240,192,0.13)',  r: 42, pct: pct(lastLegs, HEAL.legs) },
-    { label: 'Push', color: '#57a5ff', trackColor: 'rgba(87,165,255,0.13)',  r: 57, pct: pct(lastPush, HEAL.push) },
-    { label: 'Pull', color: '#8f7cff', trackColor: 'rgba(143,124,255,0.13)', r: 72, pct: pct(lastPull, HEAL.pull) },
+    { label: 'Legs', color: '#57f0c0', trackColor: 'rgba(87,240,192,0.13)',  r: 42, pct: pct(lastLegs) },
+    { label: 'Push', color: '#57a5ff', trackColor: 'rgba(87,165,255,0.13)',  r: 57, pct: pct(lastPush) },
+    { label: 'Pull', color: '#8f7cff', trackColor: 'rgba(143,124,255,0.13)', r: 72, pct: pct(lastPull) },
   ];
 }
 
