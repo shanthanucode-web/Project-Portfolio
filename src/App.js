@@ -28,6 +28,14 @@ const DEFAULT_ATHLETE = {
   progressLogFrequency: 'weekly',
 };
 
+const LIFT_IMAGES = {
+  'Back Squat':    '/backsquat.png',
+  'Front Squat':   '/frontsquat.png',
+  'Bench Press':   '/bench.png',
+  'Deadlift':      '/deadlift.png',
+  'Overhead Press':'/overhead.png',
+};
+
 const DEFAULT_NUTRITION = {
   bulkCutBlocks: [],
 };
