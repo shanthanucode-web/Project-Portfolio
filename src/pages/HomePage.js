@@ -231,7 +231,7 @@ function FullWeekStrip({ days, blocked, onDayClick, onBlockToggle, accDone, week
                       src={liftImg}
                       alt={day.lift}
                       style={{
-                        width: 36, height: 36, objectFit: 'contain',
+                        width: 136, height: 136, objectFit: 'contain',
                         filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.4))',
                         margin: '2px 0',
                         flexShrink: 0,
@@ -591,7 +591,7 @@ function HomePage({
                     src={heroLiftImage}
                     alt={todayLift}
                     style={{
-                      width: 172, height: 172,
+                      width: 232, height: 232,
                       objectFit: 'contain',
                       filter: 'drop-shadow(0 4px 16px rgba(0,0,0,0.45))',
                       display: 'block',
