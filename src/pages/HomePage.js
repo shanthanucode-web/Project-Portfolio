@@ -42,26 +42,6 @@ function toKey(d) {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
 
-function calcDailyCalories(athlete, cycleType, goalWeight) {
-  const weightKg = (athlete.bodyweight || 130) * 0.453592;
-  const heightCm = ((athlete.heightFt || 5) * 12 + (athlete.heightIn || 4)) * 2.54;
-  const age = athlete.age || 25;
-  const isMale = athlete.gender === 'male';
-  let bmr = isMale
-    ? 10 * weightKg + 6.25 * heightCm - 5 * age + 5
-    : 10 * weightKg + 6.25 * heightCm - 5 * age - 161;
-  const tdee = Math.round(bmr * 1.55);
-  let base = tdee;
-  if (cycleType === 'bulk') base = tdee + 300;
-  else if (cycleType === 'cut') base = tdee - 300;
-  if (goalWeight && athlete.bodyweight) {
-    const diff = goalWeight - athlete.bodyweight;
-    const nudge = Math.min(Math.abs(diff) * 5, 100) * Math.sign(diff);
-    base = Math.round(base + nudge);
-  }
-  return base;
-}
-
 function getDayType(lift) {
   if (!lift) return null;
   const l = lift.toLowerCase();
@@ -239,7 +219,6 @@ function FullWeekStrip({ days, blocked, onDayClick, onBlockToggle, accDone, week
                 </>
               ) : (
                 <>
-                  {/* Lift image if available, otherwise just show lift name */}
                   {liftImg && (
                     <img
                       src={liftImg}
@@ -464,39 +443,6 @@ function RecoveryRings({ rings }) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// MINI CALORIE RING
-// ─────────────────────────────────────────────────────────────
-
-function MiniCalorieRing({ consumed, goal }) {
-  const radius = 32, stroke = 6;
-  const norm = radius - stroke / 2;
-  const circ = 2 * Math.PI * norm;
-  const pct = Math.min(consumed / goal, 1);
-  const offset = circ * (1 - pct);
-  const isOver = consumed > goal;
-  const color = isOver ? '#ff9f63' : pct > 0.85 ? '#ffd84d' : '#57f0c0';
-  return (
-    <svg width={radius*2} height={radius*2} style={{ display:'block', flexShrink:0 }}>
-      <circle cx={radius} cy={radius} r={norm} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth={stroke} />
-      <circle cx={radius} cy={radius} r={norm} fill="none"
-        stroke={color} strokeWidth={stroke} strokeLinecap="round"
-        strokeDasharray={circ} strokeDashoffset={offset}
-        transform={`rotate(-90 ${radius} ${radius})`}
-        style={{ transition: 'stroke-dashoffset 0.5s ease' }}
-      />
-      <text x={radius} y={radius - 4} textAnchor="middle" fill="#f7f9ff"
-        fontSize="10" fontWeight="700" fontFamily="'Space Grotesk', sans-serif">
-        {consumed.toLocaleString()}
-      </text>
-      <text x={radius} y={radius + 7} textAnchor="middle" fill="rgba(216,226,255,0.5)"
-        fontSize="7" fontWeight="600" fontFamily="'Inter', sans-serif">
-        /{goal.toLocaleString()}
-      </text>
-    </svg>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────
 // SPARKLINE
 // ─────────────────────────────────────────────────────────────
 
@@ -532,8 +478,6 @@ function HomePage({
   startTodaysWorkout,
   goToScreen,
 }) {
-  const todayKey = toKey(new Date());
-
   const [weekOffset, setWeekOffset] = useState(0);
   const [accDone,    setAccDone]    = useState({});
   const [modalDay,   setModalDay]   = useState(null);
@@ -555,18 +499,7 @@ function HomePage({
     ? { label: 'Rest Day', emoji: '😴', accent: '#ffd84d', sub: 'Recovery · Sleep · Light movement' }
     : getDayType(todayLift);
 
-  // Hero lift image
   const heroLiftImage = !isRestDay ? getLiftImage(todayLift) : null;
-
-  const blocks = nutrition?.bulkCutBlocks ?? [];
-  const todayBlock = blocks.find(b => todayKey >= b.start && todayKey <= b.end) ?? null;
-  const cycleType = todayBlock?.type ?? null;
-  const goalWeight = nutrition?.goalWeight ?? null;
-  const calorieGoal = calcDailyCalories(athlete, cycleType, goalWeight);
-  const todayMeals = (() => {
-    try { return JSON.parse(localStorage.getItem(`calorie-meals-${todayKey}`) || '[]'); } catch { return []; }
-  })();
-  const caloriesConsumed = todayMeals.reduce((s, m) => s + (m.cals || 0), 0);
 
   const recoveryRings = computeRecovery(schedule || []);
 
@@ -577,7 +510,6 @@ function HomePage({
   ];
 
   const typeInfo = todayType ? TYPE_COLORS[todayType] : null;
-  const cycleDotColor = { bulk:'#57a5ff', cut:'#ff6fd8', maintain:'#57f0c0' }[cycleType] || 'rgba(255,255,255,0.3)';
 
   return (
     <div className="screen home-screen">
@@ -599,7 +531,6 @@ function HomePage({
 
           <div className="home-hero-main">
             <div className="home-hero-left">
-              {/* Lift image if we have one, otherwise fall back to emoji */}
               <div className="home-hero-day-emoji" style={{ color: dayType?.accent }}>
                 {heroLiftImage ? (
                   <img
@@ -690,71 +621,6 @@ function HomePage({
               <h2 className="home-panel-title">Recovery</h2>
             </div>
             <RecoveryRings rings={recoveryRings} />
-          </div>
-        </section>
-
-        {/* ── NUTRITION ── */}
-        <section className="home-bottom-row">
-          <div className="home-nutr-panel glass-panel" style={{ flex: 1 }}>
-            <div className="home-panel-head">
-              <span className="home-panel-kicker">Nutrition</span>
-              <h2 className="home-panel-title">Today's intake</h2>
-              {cycleType && (
-                <span className="home-nutr-cycle-pill">
-                  <span className="home-nutr-cycle-dot" style={{ background: cycleDotColor }} />
-                  {cycleType.charAt(0).toUpperCase() + cycleType.slice(1)}
-                </span>
-              )}
-            </div>
-
-            <div className="home-nutr-ring-row">
-              <MiniCalorieRing consumed={caloriesConsumed} goal={calorieGoal} />
-              <div className="home-nutr-stats">
-                <div className="home-nutr-stat">
-                  <span className="home-nutr-stat-label">Consumed</span>
-                  <span className="home-nutr-stat-val">
-                    {caloriesConsumed.toLocaleString()} <span className="home-nutr-stat-unit">kcal</span>
-                  </span>
-                </div>
-                <div className="home-nutr-stat">
-                  <span className="home-nutr-stat-label">
-                    {caloriesConsumed > calorieGoal ? 'Over by' : 'Remaining'}
-                  </span>
-                  <span className="home-nutr-stat-val"
-                    style={{ color: caloriesConsumed > calorieGoal ? '#ff9f63' : '#57f0c0' }}>
-                    {Math.abs(calorieGoal - caloriesConsumed).toLocaleString()}{' '}
-                    <span className="home-nutr-stat-unit">kcal</span>
-                  </span>
-                </div>
-                <div className="home-nutr-stat">
-                  <span className="home-nutr-stat-label">Target</span>
-                  <span className="home-nutr-stat-val">
-                    {calorieGoal.toLocaleString()} <span className="home-nutr-stat-unit">kcal</span>
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {todayMeals.length > 0 ? (
-              <div className="home-nutr-meals">
-                {todayMeals.slice(0, 3).map(m => (
-                  <div key={m.id} className="home-nutr-meal-row">
-                    <span className="home-nutr-meal-name">{m.name}</span>
-                    <span className="home-nutr-meal-cal">{m.cals} kcal</span>
-                  </div>
-                ))}
-                {todayMeals.length > 3 && (
-                  <div className="home-nutr-meal-more">+{todayMeals.length - 3} more meals</div>
-                )}
-              </div>
-            ) : (
-              <div className="home-nutr-empty">
-                No meals logged yet —{' '}
-                <button className="home-nutr-link" onClick={() => goToScreen?.('nutrition')}>
-                  go to nutrition →
-                </button>
-              </div>
-            )}
           </div>
         </section>
 
