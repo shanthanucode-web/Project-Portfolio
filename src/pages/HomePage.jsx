@@ -633,7 +633,7 @@ function HomePage({
           athlete={athlete}
           onClose={() => setModalDay(null)}
           onBlock={onBlockToggle}
-          onStartLift={() => { startTodaysWorkout?.(); setModalDay(null); }}
+          onStartLift={() => { startTodaysWorkout?.(modalDay); setModalDay(null); }}
           onToggleAcc={toggleAcc}
           accDone={accDone}
         />

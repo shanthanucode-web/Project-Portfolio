@@ -5,11 +5,22 @@
 /.pnp
 .pnp.js
 
+# hardware / generated
+.pio/
+/include
+/lib
+.vscode/
+.claude/
+logs/
+__pycache__/
+*.pyc
+
 # testing
 /coverage
 
 # production
 /build
+/dist
 
 # misc
 .DS_Store

@@ -181,7 +181,10 @@ function LiveWorkoutPage({
   bridgeConnected,
   sourceConnected,
   bridgeError,
+  calibrationStatus,
+  alerts,
   onEndSet,
+  onStartNextSet,
   finishWorkout,
   goBack,
 }) {
@@ -198,6 +201,18 @@ function LiveWorkoutPage({
 
   const repPct = Math.round((liveState.currentRep / Math.max(liveState.targetReps || activeWorkout.targetReps || 1, 1)) * 100);
   const coachResponse = liveState.coachResponse;
+  const alertList = alerts || liveState.alerts || [];
+  const currentSet = Number(liveState.setNumber || activeWorkout.currentSet || 1);
+  const plannedSets = Number(activeWorkout.setsPlanned || currentSet);
+  const canStartNextSet = Boolean(liveState.done && liveState.setSummary && currentSet < plannedSets);
+  const primaryAction = canStartNextSet ? onStartNextSet : finishWorkout;
+  const primaryLabel = canStartNextSet
+    ? 'Start next set'
+    : liveState.setSummary
+      ? 'Review summary'
+      : mode === 'hardware'
+        ? 'End and wait for summary'
+        : 'Finish demo workout';
 
   return (
     <div className="screen live-screen">
@@ -258,15 +273,22 @@ function LiveWorkoutPage({
       <section className="live-panel live-coach-panel">
         <div className="live-panel-head">
           <h3>Coach Nova</h3>
-          <span>{coachResponse?.source === 'openai' ? 'Python AI' : mode === 'hardware' ? 'Python coach' : 'Demo coach'}</span>
+          <span>{coachResponse?.source === 'openai' ? 'Coach API' : mode === 'hardware' ? 'Backend pending' : 'Demo coach'}</span>
         </div>
         <p className="live-coach-message">
           {liveState.liveCoachMessage || 'Waiting for set data...'}
         </p>
-        {coachResponse?.coach_advice?.length > 0 && (
+        {calibrationStatus && (
+          <div className="live-empty-copy">
+            {calibrationStatus === 'baseline_capture'
+              ? 'Calibration baseline saved for this exercise.'
+              : 'Comparing this set against your saved baseline.'}
+          </div>
+        )}
+        {alertList.length > 0 && (
           <ul className="live-coach-list">
-            {coachResponse.coach_advice.map((item) => (
-              <li key={item}>{item}</li>
+            {alertList.map((item) => (
+              <li key={item}>{item.replace(/_/g, ' ')}</li>
             ))}
           </ul>
         )}
@@ -287,8 +309,8 @@ function LiveWorkoutPage({
         <button type="button" className="live-secondary-btn" onClick={onEndSet} disabled={liveState.done}>
           End set
         </button>
-        <button type="button" className="live-primary-btn" onClick={finishWorkout}>
-          {liveState.setSummary ? 'Review summary' : mode === 'hardware' ? 'End and wait for summary' : 'Finish demo workout'}
+        <button type="button" className="live-primary-btn" onClick={primaryAction}>
+          {primaryLabel}
         </button>
       </div>
     </div>

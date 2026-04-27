@@ -1,6 +1,6 @@
 import '../styles/live.css';
 
-function WorkoutSummaryPage({ summary, logWorkout, goBack }) {
+function WorkoutSummaryPage({ summary, logWorkout, restartWorkout, goBack }) {
   if (!summary) {
     return (
       <div className="screen blank-page">
@@ -55,13 +55,14 @@ function WorkoutSummaryPage({ summary, logWorkout, goBack }) {
           <h3>Coach Debrief</h3>
           <span>{coachResponse.source || 'summary'}</span>
         </div>
-        <p className="live-coach-message">{summary.coachDebrief}</p>
-        {coachResponse.coach_advice?.length > 0 && (
+        {coachResponse.coach_advice?.length > 0 ? (
           <ul className="live-coach-list">
             {coachResponse.coach_advice.map((item) => (
               <li key={item}>{item}</li>
             ))}
           </ul>
+        ) : (
+          <p className="live-coach-message">{summary.coachDebrief}</p>
         )}
       </section>
 
@@ -89,6 +90,7 @@ function WorkoutSummaryPage({ summary, logWorkout, goBack }) {
 
       <div className="live-actions">
         <button type="button" className="live-secondary-btn" onClick={goBack}>Back to workout</button>
+        <button type="button" className="live-secondary-btn" onClick={restartWorkout}>Do it again</button>
         <button type="button" className="live-primary-btn" onClick={logWorkout}>Log workout</button>
       </div>
     </div>

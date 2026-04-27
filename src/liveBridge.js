@@ -33,7 +33,7 @@ export function createLiveBridgeClient({
     }
   };
 
-  const connectToUrl = (targetUrl, timeoutMs = 1500) =>
+  const connectToUrl = (targetUrl, timeoutMs = 500) =>
     new Promise((resolve, reject) => {
       if (isConnected()) {
         resolve(true);
@@ -91,7 +91,7 @@ export function createLiveBridgeClient({
       };
     });
 
-  const connect = async (timeoutMs = 1500) => {
+  const connect = async (timeoutMs = 500) => {
     const urls = Array.isArray(url) ? url : (url ? [url] : defaultBridgeUrls());
     let lastError = null;
     for (const targetUrl of urls) {

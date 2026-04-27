@@ -1,75 +1,203 @@
-<<<<<<< HEAD
-# Getting Started with Create React App
+# Coach NOVA
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+AI-augmented wearable coaching platform for competitive powerlifters.
 
-## Available Scripts
+UC Berkeley ME292C / DESINV 190: Human-AI Design Methods · HP Partnership
 
-In the project directory, you can run:
+BarbellBuddy is the working implementation of Coach NOVA. The system combines an ESP32-C3 wearable IMU, a Python serial/WebSocket bridge, a React training dashboard, and AI-generated coaching feedback.
 
-### `npm start`
+## System Architecture
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+```text
+ESP32-C3 + LSM6DS3
+  -> USB serial IMU stream
+  -> Python PySide6 bridge and visualizer
+  -> WebSocket bridge at ws://127.0.0.1:8765
+  -> React/Vite frontend at http://localhost:3000
+  -> live workout UI, rep history, set summaries, and Coach NOVA feedback
+```
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+Core paths:
 
-### `npm test`
+- Firmware: `src/main.cpp`
+- Firmware config: `platformio.ini`
+- Python GUI and serial bridge: `app/main.py`
+- WebSocket bridge: `app/live_bridge.py`
+- Serial parser: `app/serial_reader.py`
+- React app: `src/App.jsx`
+- Frontend bridge client: `src/liveBridge.js`
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+## Hardware Wiring
 
-### `npm run build`
+The wearable uses an ESP32-C3 Super Mini and an LSM6DS3 6-axis IMU breakout over I2C.
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+| LSM6DS3 Pin | ESP32-C3 Connection | Notes |
+| --- | --- | --- |
+| `VIN` | `3.3V` | Power the sensor at 3.3V, not 5V. |
+| `GND` | `GND` | Common ground. |
+| `SDA` | `GPIO8` | I2C data line. |
+| `SCL` | `GPIO9` | I2C clock line. |
+| `CS` | `3.3V` | Tie HIGH to select I2C mode. |
+| `SAO` | `GND` | Tie LOW to use I2C address `0x6A`. |
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+The firmware initializes I2C with:
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+```cpp
+Wire.begin(8, 9);
+LSM6DS3 imu(I2C_MODE, 0x6A);
+```
 
-### `npm run eject`
+The SparkFun LSM6DS3 breakout includes I2C pull-up resistors, so external pull-ups are not required for the current board.
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+## Firmware
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+The PlatformIO environment is:
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+```ini
+[env:esp32-c3-devkitm-1]
+platform = espressif32
+board = esp32-c3-devkitm-1
+framework = arduino
+monitor_speed = 115200
+```
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+The firmware:
 
-## Learn More
+- reads accelerometer, gyroscope, and temperature data at 50 Hz
+- calibrates gyroscope bias on boot
+- streams raw IMU data over USB serial
+- runs a simple acceleration-threshold rep detector
+- emits rep summary events after completed reps
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+Serial baud rate:
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+```text
+115200
+```
 
-### Code Splitting
+Raw IMU serial format:
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
+```text
+ax,ay,az,gx,gy,gz,temp
+```
 
-### Analyzing the Bundle Size
+Rep event format:
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
+```text
+REP,<rep_number>,<duration_ms>,<peak_accel_g>
+```
 
-### Making a Progressive Web App
+Example:
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
+```text
+0.0123,-0.0041,1.0024,0.1200,-0.0300,0.0800,24.50
+REP,3,1240,1.87
+```
 
-### Advanced Configuration
+## Local Startup
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
+Install frontend dependencies:
 
-### Deployment
+```bash
+npm ci --include=dev
+```
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
+Start the React frontend:
 
-### `npm run build` fails to minify
+```bash
+npm start
+```
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
-=======
-# BarbellBuddy
-For Berkeley's Human-AI design class
->>>>>>> 3aaf5afe5bb29f9ff3e0b4e08c88132c4be304ba
+Open:
+
+```text
+http://localhost:3000
+```
+
+Start the Python GUI and hardware bridge in a second terminal:
+
+```bash
+python3 app/main.py
+```
+
+In the Python GUI:
+
+1. Select the ESP32 serial port.
+2. Keep baud at `115200`.
+3. Click `Connect`.
+4. Start a workout from the web app or start a set from the Python GUI.
+
+When the Python bridge is running, the frontend connects to:
+
+```text
+ws://127.0.0.1:8765
+ws://localhost:8765
+```
+
+If the bridge is unavailable, the frontend stays in demo mode.
+
+## AI Coaching
+
+The Python app and frontend include AI coaching flows for live workout guidance, post-set feedback, nutrition advice, and schedule adjustment.
+
+For OpenAI-backed features, set:
+
+```bash
+OPENAI_API_KEY=...
+```
+
+The Vite dev server also includes a local `/api/openai` proxy for frontend calls.
+
+## Verification
+
+Run a production build:
+
+```bash
+npm run build
+```
+
+Run tests:
+
+```bash
+npm test
+```
+
+When Vite is running, this should return `200 OK`:
+
+```bash
+curl -I http://127.0.0.1:3000/
+```
+
+## Troubleshooting
+
+If `npm start` says Vite is ready but the browser stays blank, make sure there are no broken dependency backups inside the repo root:
+
+```text
+node_modules.broken-*
+```
+
+Move those folders outside the project root. Vite can scan large dependency backup trees and hang while serving modules.
+
+If needed, clear Vite's cache:
+
+```bash
+rm -rf node_modules/.vite
+npm start -- --force
+```
+
+Failed browser console connections to `ws://127.0.0.1:8765` are expected until `python3 app/main.py` is running.
+
+If hardware does not connect:
+
+- verify the ESP32 appears as a serial device
+- verify the selected serial port in the Python GUI
+- verify baud is `115200`
+- verify wiring matches the table above
+- verify the firmware is emitting `ax,ay,az,gx,gy,gz,temp`
+- verify `CS` is tied HIGH and `SAO` is tied LOW
+
+## Notes for Future Work
+
+- Keep backup `node_modules` folders outside the repository root.
+- Keep the firmware serial format stable unless `app/serial_reader.py` is updated at the same time.
+- Keep the WebSocket message contract between `app/live_bridge.py` and `src/liveBridge.js` stable when changing live workout behavior.

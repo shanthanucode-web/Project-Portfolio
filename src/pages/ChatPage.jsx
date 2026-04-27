@@ -1,42 +1,26 @@
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect } from 'react';
+import { callCoachTrigger, coachResponseToText } from '../coachClient';
 
 /* ─── Direct API call — JSON enforced at every layer ─── */
-async function callCoach(systemPrompt, conversationHistory) {
-  const res = await fetch('/api/openai', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: 'gpt-4o',
-      max_tokens: 2000,
-      response_format: { type: 'json_object' },
-      messages: [
-        { role: 'system', content: systemPrompt },
-        ...conversationHistory,
-      ],
-    }),
+async function callCoach({ athlete, schedule, nutrition, workoutHistory, blockedDays, calibration, sessionHistory, message, conversationHistory }) {
+  const result = await callCoachTrigger({
+    trigger: 'ATHLETE_MESSAGE',
+    athlete,
+    calibration,
+    sessionHistory,
+    workoutSummary: workoutHistory?.[0] || null,
+    currentSet: sessionHistory?.[sessionHistory.length - 1] || null,
+    message,
+    conversationHistory,
+    schedule,
+    nutrition,
+    blockedDays: blockedDays ? [...blockedDays] : [],
   });
 
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'API error');
-
-  const raw = data.output || data.choices?.[0]?.message?.content || '';
-
-  // Strip any markdown code fences the model might add despite instructions
-  const clean = raw.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
-
-  try {
-    const parsed = JSON.parse(clean);
-    // Validate newSchedule length if present
-    if (parsed.newSchedule && parsed.newSchedule.length !== 14) {
-      console.warn('AI schedule wrong length:', parsed.newSchedule.length, '— fixing');
-      while (parsed.newSchedule.length < 14) parsed.newSchedule.push({ lift: null, type: null, rest: true });
-      parsed.newSchedule = parsed.newSchedule.slice(0, 14);
-    }
-    return parsed;
-  } catch {
-    // AI returned plain text despite instructions — wrap it
-    return { reply: clean.slice(0, 400), newSchedule: null };
-  }
+  return {
+    reply: coachResponseToText(result),
+    newSchedule: result.raw?.newSchedule || null,
+  };
 }
 
 /* ─── Build system prompt from all athlete context ─── */
@@ -312,6 +296,8 @@ export default function ChatPage({
   chatMessages,
   setChatMessages,
   workoutHistory,
+  calibration,
+  sessionHistory,
   blockedDays,
   onApplySchedule,
   onBlockDay,
@@ -323,11 +309,6 @@ export default function ChatPage({
   const [lastNewSchedule, setLastNewSchedule] = useState(null);
   const bottomRef = useRef(null);
   const textareaRef = useRef(null);
-
-  const systemPrompt = useMemo(
-    () => buildSystemPrompt({ athlete, schedule, nutrition, workoutHistory, blockedDays }),
-    [athlete, schedule, nutrition, workoutHistory, blockedDays]
-  );
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -359,7 +340,17 @@ export default function ChatPage({
     setLoading(true);
 
     try {
-      const result = await callCoach(systemPrompt, history);
+      const result = await callCoach({
+        athlete,
+        schedule,
+        nutrition,
+        workoutHistory,
+        blockedDays,
+        calibration,
+        sessionHistory,
+        message: trimmed,
+        conversationHistory: history,
+      });
 
       const scheduleChanged = !!result.newSchedule;
 

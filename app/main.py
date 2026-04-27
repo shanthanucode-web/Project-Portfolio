@@ -29,19 +29,17 @@ from PySide6.QtWidgets import (
 )
 
 try:
-    from .ai_coach import CoachResponse, OpenAICoach
     from .live_bridge import LiveBridgeServer
     from .motion_estimator import GravityCompensatedVelocityEstimator, MotionEstimate
     from .session_logger import SessionLogger
-    from .set_analyzer import SetAnalyzer, SetContext, WorkoutContext
+    from .set_analyzer import SetAnalyzer, SetContext
     from .serial_reader import ImuSample, RepEvent, SerialImuSource, SIMULATED_PORT_NAME
     from .simulator import SimulatedImuSource
 except ImportError:
-    from ai_coach import CoachResponse, OpenAICoach
     from live_bridge import LiveBridgeServer
     from motion_estimator import GravityCompensatedVelocityEstimator, MotionEstimate
     from session_logger import SessionLogger
-    from set_analyzer import SetAnalyzer, SetContext, WorkoutContext
+    from set_analyzer import SetAnalyzer, SetContext
     from serial_reader import ImuSample, RepEvent, SerialImuSource, SIMULATED_PORT_NAME
     from simulator import SimulatedImuSource
 
@@ -98,10 +96,8 @@ class ImuViewerWindow(QMainWindow):
         self.motion_estimator = GravityCompensatedVelocityEstimator()
         self.logger: Optional[SessionLogger] = None
         self.set_analyzer = SetAnalyzer()
-        self.ai_coach = OpenAICoach()
         self.active_set_context: Optional[SetContext] = None
-        self.active_workout_context: Optional[WorkoutContext] = None
-        self.latest_coach_response: Optional[CoachResponse] = None
+        self.pending_set_payload: Optional[dict[str, object]] = None
         self.bridge_commands: Queue = Queue()
         self.bridge = LiveBridgeServer(
             self.bridge_commands,
@@ -112,7 +108,7 @@ class ImuViewerWindow(QMainWindow):
         self.bridge_available = self.bridge.start()
         self._last_bridge_metrics_sent_s = 0.0
 
-        # Rep counter state — updated when REP summary lines arrive from firmware
+        # Rep counter state — updated when confirmed reps arrive via flush_pending_reps
         self._rep_count = 0
         self._last_rep_duration_ms = 0
         self._last_rep_peak_g = 0.0
@@ -334,7 +330,6 @@ class ImuViewerWindow(QMainWindow):
             )
         )
 
-        # Rep counter group — flashes green when a new rep is detected by the firmware
         self.rep_group = self._create_value_group(
             "Rep Counter",
             (
@@ -451,6 +446,7 @@ class ImuViewerWindow(QMainWindow):
             "set_number": self.active_set_context.set_number if self.active_set_context is not None else None,
             "exercise": self.active_set_context.exercise if self.active_set_context is not None else None,
             "target_reps": self.active_set_context.target_reps if self.active_set_context is not None else None,
+            "set_prepared": self.pending_set_payload is not None,
         }
 
     def _bridge_send(self, message_type: str, payload: dict[str, object]) -> None:
@@ -472,19 +468,14 @@ class ImuViewerWindow(QMainWindow):
             payload = message.get("payload", {})
             if message_type == "start_set":
                 self.handle_start_set(payload)
+            elif message_type == "prepare_set":
+                self.handle_prepare_set(payload)
             elif message_type == "end_set":
                 self.handle_end_set(payload)
             elif message_type == "ping":
                 self._bridge_send("bridge_status", self._bridge_status_payload())
 
-    def handle_start_set(self, payload: dict[str, object]) -> None:
-        if self.source is None or not self.source.is_connected:
-            self._bridge_error("Cannot start a set because no IMU source is connected.")
-            return
-        if self.active_set_context is not None:
-            self._bridge_error("A set is already active.")
-            return
-
+    def _apply_set_payload_to_controls(self, payload: dict[str, object]) -> None:
         exercise = str(payload.get("exercise", self.exercise_combo.currentText()))
         if self.exercise_combo.findText(exercise) >= 0:
             self.exercise_combo.setCurrentText(exercise)
@@ -494,6 +485,47 @@ class ImuViewerWindow(QMainWindow):
         self.set_number_spin.setValue(int(payload.get("set_number", self.set_number_spin.value())))
         set_mode = str(payload.get("set_mode", "working"))
         self.pr_attempt_checkbox.setChecked(set_mode == "pr_attempt")
+
+    def handle_prepare_set(self, payload: dict[str, object]) -> None:
+        # Silently close any stale set before preparing the next one
+        if self.active_set_context is not None:
+            self._finalize_active_set()
+        if self.source is None or not self.source.is_connected:
+            self._bridge_error("Cannot prepare a set because no IMU source is connected.")
+            return
+
+        self.pending_set_payload = dict(payload)
+        self._apply_set_payload_to_controls(self.pending_set_payload)
+        # Reset rep display counters immediately so live_metrics broadcasts 0
+        self._rep_count = 0
+        self._last_rep_duration_ms = 0
+        self._last_rep_peak_g = 0.0
+        self.value_labels["rep_count"].setText("0")
+        self.value_labels["rep_duration"].setText("--")
+        self.value_labels["rep_peak"].setText("--")
+        self.set_status_label.setText(
+            f"Set {self.set_number_spin.value()} prepared. Waiting for the first detected rep."
+        )
+        self._update_set_controls()
+        self._update_info_label()
+        self._bridge_send("bridge_status", self._bridge_status_payload())
+
+    def _activate_prepared_set_if_needed(self) -> None:
+        if self.active_set_context is not None or self.pending_set_payload is None:
+            return
+        self._apply_set_payload_to_controls(self.pending_set_payload)
+        self.start_set()
+        self.pending_set_payload = None
+
+    def handle_start_set(self, payload: dict[str, object]) -> None:
+        if self.source is None or not self.source.is_connected:
+            self._bridge_error("Cannot start a set because no IMU source is connected.")
+            return
+        if self.active_set_context is not None:
+            self._finalize_active_set()
+
+        self.pending_set_payload = None
+        self._apply_set_payload_to_controls(payload)
         self.start_set()
 
     def handle_end_set(self, payload: dict[str, object]) -> None:
@@ -557,7 +589,7 @@ class ImuViewerWindow(QMainWindow):
         self.ui_timer.stop()
 
         if self.active_set_context is not None:
-            self._finalize_active_set(trigger_ai=False)
+            self._finalize_active_set()
 
         if self.source is not None:
             self.source.disconnect()
@@ -588,15 +620,6 @@ class ImuViewerWindow(QMainWindow):
             target_reps=int(self.target_reps_spin.value()),
             set_number=int(self.set_number_spin.value()),
             set_mode=set_mode,
-            timestamp_start=timestamp_start,
-        )
-        self.active_workout_context = WorkoutContext(
-            athlete_id="local-demo",
-            exercise=self.active_set_context.exercise,
-            load_lbs=self.active_set_context.load_lbs,
-            target_reps=self.active_set_context.target_reps,
-            set_number=self.active_set_context.set_number,
-            set_mode=self.active_set_context.set_mode,
             timestamp_start=timestamp_start,
         )
         self.set_analyzer.start_set(self.active_set_context)
@@ -631,7 +654,7 @@ class ImuViewerWindow(QMainWindow):
         if self.active_set_context is None:
             self._set_status("No active set to end.", "#b00020")
             return
-        self._finalize_active_set(trigger_ai=True)
+        self._finalize_active_set()
 
     def _ensure_logger_started(self) -> None:
         if self.logger is not None:
@@ -645,16 +668,15 @@ class ImuViewerWindow(QMainWindow):
             }
         )
 
-    def _finalize_active_set(self, trigger_ai: bool) -> None:
+    def _finalize_active_set(self) -> None:
         if self.active_set_context is None:
             return
 
         set_context = self.active_set_context
-        workout_context = self.active_workout_context
         set_summary = self.set_analyzer.end_set()
 
         self.active_set_context = None
-        self.active_workout_context = None
+        self.pending_set_payload = None
         self._update_set_controls()
 
         if set_summary is None:
@@ -671,14 +693,7 @@ class ImuViewerWindow(QMainWindow):
             f"Set {set_context.set_number} complete with {set_summary.completed_reps} recorded reps."
         )
 
-        if trigger_ai and workout_context is not None:
-            self.coach_summary_label.setText("Generating post-set coaching...")
-            response = self.ai_coach.get_post_set_advice(workout_context, set_summary)
-            self.latest_coach_response = response
-            self._show_coach_response(response, set_summary)
-            self._bridge_send("coach_response", response.to_dict())
-        else:
-            self._show_set_summary_only(set_summary)
+        self._show_set_summary_only(set_summary)
 
         self.set_number_spin.setValue(set_context.set_number + 1)
         self.pr_attempt_checkbox.setChecked(False)
@@ -720,63 +735,35 @@ class ImuViewerWindow(QMainWindow):
         self._update_info_label()
 
     def _handle_rep_event(self, rep: RepEvent) -> None:
-        """Update the rep counter display and flash the group green for 600ms."""
-        display_rep_number = rep.rep_number
-        rep_payload: dict[str, object] = {
-            "timestamp_s": rep.timestamp_s,
-            "rep_number": rep.rep_number,
-            "duration_ms": rep.duration_ms,
-            "peak_accel_g": rep.peak_accel_g,
-        }
+        """
+        Receive a firmware REP candidate event.
+        Activates a prepared set on the first rep, logs the raw event,
+        and queues it in SetAnalyzer for phase validation.
+        Confirmed reps are processed in _append_sample via flush_pending_reps.
+        """
+        # If a set is prepared and waiting, activate it on the first rep
+        self._activate_prepared_set_if_needed()
 
-        # Flash the group box background bright green so the rep is immediately
-        # obvious on screen — useful when the laptop is across the room during testing.
+        # Flash the rep counter group green for immediate visual feedback
         self.rep_group.setStyleSheet(
             "QGroupBox { background-color: #00c853; border-radius: 6px; }"
         )
-        # Schedule the flash to clear after 600ms
         self._rep_flash_timer.start(600)
 
+        # Log the raw firmware rep event
         if self.logger is not None:
             self.logger.log_rep_event(
                 rep,
                 self.active_set_context.set_number if self.active_set_context is not None else None,
             )
 
+        # Queue the rep for phase validation — confirmed reps emerge from
+        # flush_pending_reps which is called after each sample in _append_sample
         if self.active_set_context is not None:
-            rep_feature = self.set_analyzer.ingest_rep_event(rep)
-            rep_payload.update(
-                {
-                    "set_number": self.active_set_context.set_number,
-                    "exercise": self.active_set_context.exercise,
-                    "set_mode": self.active_set_context.set_mode,
-                }
-            )
-            if rep_feature is not None:
-                display_rep_number = rep_feature.rep_number
-                rep_payload.update(
-                    {
-                        "rep_number": rep_feature.rep_number,
-                        "velocity_proxy": rep_feature.velocity_proxy,
-                        "avg_tilt_deg": rep_feature.avg_tilt_deg,
-                        "max_tilt_deg": rep_feature.max_tilt_deg,
-                        "flags": rep_feature.flags,
-                    }
-                )
-            self._bridge_send("rep_event", rep_payload)
-            if self.set_analyzer.should_auto_finalize():
-                self._finalize_active_set(trigger_ai=True)
-
-        self._rep_count = display_rep_number
-        self._last_rep_duration_ms = rep.duration_ms
-        self._last_rep_peak_g = rep.peak_accel_g
-
-        self.value_labels["rep_count"].setText(str(display_rep_number))
-        self.value_labels["rep_duration"].setText(str(rep.duration_ms))
-        self.value_labels["rep_peak"].setText(f"{rep.peak_accel_g:.2f}")
+            self.set_analyzer.ingest_rep_event(rep)
 
     def _clear_rep_flash(self) -> None:
-        """Reset the rep counter group background to normal after the flash fades."""
+        """Reset the rep counter group background after the flash fades."""
         self.rep_group.setStyleSheet("")
 
     def change_velocity_axis(self, axis: str) -> None:
@@ -820,8 +807,44 @@ class ImuViewerWindow(QMainWindow):
         self.velocity_timestamps.append(sample.timestamp)
         self.velocity_data.append(self.latest_motion_estimate.velocity_mps)
 
+        # Activate a prepared set if samples are arriving and one is waiting
+        if self.pending_set_payload is not None and self.active_set_context is None:
+            self._activate_prepared_set_if_needed()
+
         if self.active_set_context is not None:
             self.set_analyzer.ingest_sample(sample, self.latest_motion_estimate)
+
+            # Check if any queued rep candidates are now fully validated
+            # (ascent samples have arrived since the firmware REP event fired)
+            confirmed_reps = self.set_analyzer.flush_pending_reps()
+            for rep_feature in confirmed_reps:
+                self._rep_count = rep_feature.rep_number
+                self.value_labels["rep_count"].setText(str(rep_feature.rep_number))
+                self.value_labels["rep_duration"].setText(str(rep_feature.duration_ms))
+                self.value_labels["rep_peak"].setText(f"{rep_feature.peak_accel_g:.2f}")
+                self._bridge_send(
+                    "rep_event",
+                    {
+                        "rep_number": rep_feature.rep_number,
+                        "velocity_proxy": rep_feature.velocity_proxy,
+                        "avg_tilt_deg": rep_feature.avg_tilt_deg,
+                        "max_tilt_deg": rep_feature.max_tilt_deg,
+                        "flags": rep_feature.flags,
+                        "set_number": self.active_set_context.set_number if self.active_set_context else None,
+                        "exercise": self.active_set_context.exercise if self.active_set_context else None,
+                        "set_mode": self.active_set_context.set_mode if self.active_set_context else None,
+                        "duration_ms": rep_feature.duration_ms,
+                        "peak_accel_g": rep_feature.peak_accel_g,
+                    },
+                )
+                # Check auto-finalize after each confirmed rep
+                if self.set_analyzer.should_auto_finalize():
+                    self._finalize_active_set()
+                    break
+            # Check auto-finalize on every sample, not just when confirming reps.
+            # This is what triggers rest-based finalization after the athlete stops.
+            if self.active_set_context is not None and self.set_analyzer.should_auto_finalize():
+                self._finalize_active_set()
 
         if self.logger is not None:
             self.logger.log_sample(sample, self.latest_motion_estimate, self.active_set_context)
@@ -1008,7 +1031,6 @@ class ImuViewerWindow(QMainWindow):
         self.end_set_button.setEnabled(set_active)
 
     def _clear_coach_panel(self) -> None:
-        self.latest_coach_response = None
         self.coach_summary_label.setText("No completed set yet.")
         self.coach_meta_label.setText("Structured labels and next-set actions will appear here.")
         self.coach_text.clear()
@@ -1028,29 +1050,9 @@ class ImuViewerWindow(QMainWindow):
             f"Fatigue score: {set_summary.fatigue_score:.2f}"
         )
 
-    def _show_coach_response(self, response: CoachResponse, set_summary) -> None:
-        labels = ", ".join(response.classification) if response.classification else "none"
-        next_action = response.next_set_action
-        self.coach_summary_label.setText(response.summary)
-        self.coach_meta_label.setText(
-            f"Labels: {labels} | Severity: {response.severity} | Source: {response.source}"
-        )
-        advice_lines = "\n".join(f"- {line}" for line in response.coach_advice)
-        self.coach_text.setPlainText(
-            f"Exercise: {set_summary.exercise}\n"
-            f"Set {set_summary.set_number} ({set_summary.set_mode}) @ {set_summary.load_lbs} lbs\n"
-            f"Completed reps: {set_summary.completed_reps}/{set_summary.target_reps}\n"
-            f"Average tilt: {set_summary.avg_tilt_deg:.2f} deg | Max tilt: {set_summary.max_tilt_deg:.2f} deg\n"
-            f"Velocity dropoff: {set_summary.velocity_dropoff_pct:.2f}% | Fatigue score: {set_summary.fatigue_score:.2f}\n\n"
-            f"Coach advice:\n{advice_lines or '- None'}\n\n"
-            f"Next set: rest {next_action.rest_seconds}s, "
-            f"load adjustment {next_action.load_adjustment_lbs:+d} lbs, "
-            f"focus cue: {next_action.focus_cue}"
-        )
-
     def _clear_history(self) -> None:
         self.active_set_context = None
-        self.active_workout_context = None
+        self.pending_set_payload = None
         self._rep_count = 0
         self._last_rep_duration_ms = 0
         self._last_rep_peak_g = 0.0

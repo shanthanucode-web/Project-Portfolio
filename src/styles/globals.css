@@ -121,6 +121,112 @@ select {
   -webkit-backdrop-filter: blur(24px) saturate(135%);
 }
 
+.setup-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(3, 7, 18, 0.72);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.setup-modal {
+  width: min(440px, 100%);
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(13, 22, 48, 0.96);
+  box-shadow: 0 24px 70px rgba(0,0,0,0.38);
+  padding: 22px;
+}
+
+.setup-modal-head,
+.setup-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.setup-modal-head span {
+  color: rgba(216,226,255,0.62);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.setup-modal h2 {
+  margin: 12px 0 20px;
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 1.6rem;
+  letter-spacing: 0;
+}
+
+.setup-field-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.setup-field {
+  display: grid;
+  gap: 8px;
+  color: rgba(247,249,255,0.78);
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.setup-field input {
+  width: 100%;
+  height: 44px;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(255,255,255,0.07);
+  color: rgba(255,255,255,0.96);
+  padding: 0 12px;
+}
+
+.setup-actions {
+  margin-top: 22px;
+}
+
+.setup-close-btn,
+.setup-secondary-btn,
+.setup-primary-btn {
+  border: 1px solid rgba(255,255,255,0.14);
+  cursor: pointer;
+}
+
+.setup-close-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.06);
+  color: rgba(255,255,255,0.82);
+}
+
+.setup-secondary-btn,
+.setup-primary-btn {
+  min-height: 42px;
+  border-radius: 8px;
+  padding: 0 14px;
+  font-weight: 800;
+}
+
+.setup-secondary-btn {
+  background: rgba(255,255,255,0.06);
+  color: rgba(255,255,255,0.82);
+}
+
+.setup-primary-btn {
+  background: #57f0c0;
+  border-color: rgba(87,240,192,0.72);
+  color: #07111f;
+}
+
 @media (max-width: 760px) {
   .topnav {
     height: auto;
@@ -136,5 +242,9 @@ select {
 
   .main-content {
     padding: 14px 14px 30px;
+  }
+
+  .setup-field-grid {
+    grid-template-columns: 1fr;
   }
 }
