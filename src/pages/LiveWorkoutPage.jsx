@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import '../styles/live.css';
 
 function formatDuration(startedAt) {
@@ -183,11 +184,24 @@ function LiveWorkoutPage({
   bridgeError,
   calibrationStatus,
   alerts,
+  resetCalibration,
   onEndSet,
   onStartNextSet,
   finishWorkout,
   goBack,
 }) {
+  const [recalibrationMessage, setRecalibrationMessage] = useState('');
+
+  useEffect(() => {
+    if (!recalibrationMessage) return undefined;
+
+    const timeoutId = setTimeout(() => {
+      setRecalibrationMessage('');
+    }, 4000);
+
+    return () => clearTimeout(timeoutId);
+  }, [recalibrationMessage]);
+
   if (!activeWorkout) {
     return (
       <div className="screen blank-page">
@@ -213,6 +227,12 @@ function LiveWorkoutPage({
       : mode === 'hardware'
         ? 'End and wait for summary'
         : 'Finish demo workout';
+  const handleRecalibrate = () => {
+    resetCalibration?.(activeWorkout.lift);
+    setRecalibrationMessage(
+      `Baseline cleared. Your next set will be used as your new calibration for ${activeWorkout.lift}.`
+    );
+  };
 
   return (
     <div className="screen live-screen">
@@ -273,11 +293,21 @@ function LiveWorkoutPage({
       <section className="live-panel live-coach-panel">
         <div className="live-panel-head">
           <h3>Coach Nova</h3>
-          <span>{coachResponse?.source === 'openai' ? 'Coach API' : mode === 'hardware' ? 'Backend pending' : 'Demo coach'}</span>
+          <div className="live-panel-actions">
+            <button type="button" className="live-mini-btn" onClick={handleRecalibrate}>
+              Recalibrate
+            </button>
+            <span>{coachResponse?.source === 'openai' ? 'Coach API' : mode === 'hardware' ? 'Backend pending' : 'Demo coach'}</span>
+          </div>
         </div>
         <p className="live-coach-message">
           {liveState.liveCoachMessage || 'Waiting for set data...'}
         </p>
+        {recalibrationMessage && (
+          <div className="live-calibration-confirmation">
+            {recalibrationMessage}
+          </div>
+        )}
         {calibrationStatus && (
           <div className="live-empty-copy">
             {calibrationStatus === 'baseline_capture'

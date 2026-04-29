@@ -5,7 +5,7 @@ function FieldLabel({ children }) {
   return <label className="profile-label">{children}</label>;
 }
 
-function ProfilePage({ athlete, setAthlete, goBack }) {
+function ProfilePage({ athlete, setAthlete, resetCalibration, goBack }) {
   const [form, setForm] = useState({
     ...athlete,
     cycleTracking: athlete.cycleTracking ?? false,
@@ -15,6 +15,7 @@ function ProfilePage({ athlete, setAthlete, goBack }) {
   });
 
   const [saved, setSaved] = useState(false);
+  const [calibrationCleared, setCalibrationCleared] = useState(false);
 
   useEffect(() => {
     setForm({
@@ -53,6 +54,21 @@ function ProfilePage({ athlete, setAthlete, goBack }) {
       setSaved(false);
     }, 1600);
   };
+
+  const handleResetCalibration = () => {
+    resetCalibration?.();
+    setCalibrationCleared(true);
+  };
+
+  useEffect(() => {
+    if (!calibrationCleared) return undefined;
+
+    const timeoutId = setTimeout(() => {
+      setCalibrationCleared(false);
+    }, 4000);
+
+    return () => clearTimeout(timeoutId);
+  }, [calibrationCleared]);
 
   return (
     <div className="screen profile-screen">
@@ -237,6 +253,24 @@ function ProfilePage({ athlete, setAthlete, goBack }) {
               rows={7}
             />
           </div>
+        </div>
+
+        <div className="profile-section glass-panel">
+          <h2>Calibration</h2>
+
+          <p className="profile-help-text">
+            Clear saved movement baselines for this athlete when sensor placement or technique setup changes.
+          </p>
+
+          <button type="button" className="profile-reset-btn" onClick={handleResetCalibration}>
+            Reset all calibration data
+          </button>
+
+          {calibrationCleared && (
+            <div className="profile-calibration-cleared">
+              Calibration data cleared. Your next workout will capture fresh baselines.
+            </div>
+          )}
         </div>
 
         <div className="profile-actions">

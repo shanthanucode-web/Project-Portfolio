@@ -14,8 +14,11 @@ import {
   baselineFromSet,
   buildSetAlerts,
   displayExercise,
+  athleteKey,
+  exerciseKey,
   getExerciseBaseline,
   loadCalibrationStore,
+  saveCalibrationStore,
   upsertExerciseBaseline,
 } from './calibration';
 import './styles/globals.css';
@@ -466,6 +469,28 @@ function App() {
     [athlete.firstName, athlete.lastName]
   );
 
+  const resetCalibration = useCallback((exercise = null) => {
+    setCalibrationStore((prev) => {
+      const next = { ...(prev || {}) };
+      const personKey = athleteKey(athlete);
+
+      if (exercise) {
+        if (next[personKey]) {
+          next[personKey] = { ...next[personKey] };
+          delete next[personKey][exerciseKey(exercise)];
+          if (!Object.keys(next[personKey]).length) {
+            delete next[personKey];
+          }
+        }
+      } else {
+        delete next[personKey];
+      }
+
+      saveCalibrationStore(next);
+      return next;
+    });
+  }, [athlete]);
+
   // ─── Workout flow ─────────────────────────────────────────────────
   const prepareHardwareSet = (payload) => {
     if (bridgeRef.current?.isConnected()) {
@@ -714,7 +739,8 @@ function App() {
           <ProfilePage
             athlete={athlete}
             setAthlete={setAthlete}
-            goToScreen={goToScreen}
+            resetCalibration={resetCalibration}
+            goBack={goBack}
           />
         )}
 
@@ -729,6 +755,7 @@ function App() {
             bridgeError={bridgeError}
             calibrationStatus={liveState.calibrationStatus}
             alerts={liveState.alerts}
+            resetCalibration={resetCalibration}
             onEndSet={onEndSet}
             onStartNextSet={onStartNextSet}
             finishWorkout={finishWorkout}

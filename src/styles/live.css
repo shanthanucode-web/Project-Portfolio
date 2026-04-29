@@ -169,6 +169,14 @@
   margin-bottom: 12px;
 }
 
+.live-panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .live-panel-head h3 {
   margin: 0;
   font-family: 'Space Grotesk', sans-serif;
@@ -187,6 +195,30 @@
   color: rgba(247,249,255,0.86);
   font-weight: 700;
   line-height: 1.55;
+}
+
+.live-mini-btn {
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.07);
+  color: rgba(247,249,255,0.88);
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 850;
+}
+
+.live-calibration-confirmation {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(87,240,192,0.26);
+  background: rgba(87,240,192,0.1);
+  color: #8dffcf;
+  font-size: 0.84rem;
+  font-weight: 800;
+  line-height: 1.45;
 }
 
 .live-coach-list {
