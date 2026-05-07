@@ -25,17 +25,8 @@ const float HP_ALPHA = 0.98;
 
 // Alert thresholds for LED indicator
 #define LED_TILT_THRESHOLD_DEG     15.0f
-#define LED_VELOCITY_DROP_PCT      25.0f
-#define LED_MIN_VELOCITY_MPS       0.15f
-
-// ─── LED alert motion estimate constants ──────────────────────────────────────
-const float GRAVITY_MS2 = 9.80665;
-const float VELOCITY_DEADBAND_MS2 = 0.15;
-const float VELOCITY_ZERO_SNAP_MPS = 0.03;
-const float VELOCITY_DAMPING = 0.90;
-const float STATIONARY_ACCEL_TOLERANCE_G = 0.15;
-const float STATIONARY_GYRO_THRESHOLD_DPS = 4.0;
-const uint32_t SESSION_PEAK_RESET_IDLE_MS = 5000;
+const float LED_TILT_CLEAR_THRESHOLD_DEG = 12.0f;
+const int LED_TILT_DEBOUNCE_SAMPLES = 3;
 
 // ─── Rep detection state ──────────────────────────────────────────────────────
 // A rep moves through three phases:
@@ -53,11 +44,12 @@ int      belowCount = 0;     // consecutive samples below threshold (for debounc
 float    magnitudeAvg = 1.0; // running average of accel magnitude — starts at 1g (gravity at rest)
 
 // ─── LED alert state ──────────────────────────────────────────────────────────
-float sessionPeakVelocityMps = 0.0;
+float baselinePitchDeg = 0.0f;
+float baselineRollDeg = 0.0f;
+bool  tiltBaselineReady = false;
 bool  ledAlertActive = false;
-float currentVelocityMps = 0.0;
-uint32_t lastMotionEstimateMs = 0;
-uint32_t lastMovingMs = 0;
+int   ledTiltAboveCount = 0;
+int   ledTiltBelowCount = 0;
 
 // ─── Gyro bias calibration ────────────────────────────────────────────────────
 // The gyroscope produces a small non-zero output even when perfectly still.
@@ -98,83 +90,73 @@ void calibrateGyro() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// updateLedAlert(ax, ay, az, gx, gy, gz)
-// Computes demo-grade tilt and Z-axis velocity onboard and drives GPIO10 when
-// the bar exceeds hardcoded form/fatigue thresholds.
+// computeTiltAngles(ax, ay, az, pitchDeg, rollDeg)
+// Converts accelerometer gravity direction into pitch/roll angles in degrees.
 // ─────────────────────────────────────────────────────────────────────────────
-void updateLedAlert(float ax, float ay, float az, float gx, float gy, float gz) {
-  uint32_t nowMs = millis();
-  float dtS = 0.02;
-
-  if (lastMotionEstimateMs != 0) {
-    dtS = (nowMs - lastMotionEstimateMs) / 1000.0;
-    if (dtS <= 0.0 || dtS > 0.5) {
-      dtS = 0.02;
-    }
-  }
-  lastMotionEstimateMs = nowMs;
-
+void computeTiltAngles(float ax, float ay, float az, float &pitchDeg, float &rollDeg) {
   float rollRad = atan2(ay, az);
   float pitchRad = atan2(-ax, sqrt(ay * ay + az * az));
-  float pitchDeg = pitchRad * 180.0 / PI;
-  float rollDeg = rollRad * 180.0 / PI;
+  pitchDeg = pitchRad * 180.0f / PI;
+  rollDeg = rollRad * 180.0f / PI;
+}
 
-  float gravityZG = cos(rollRad) * cos(pitchRad);
-  float linearAccelZMps2 = (az - gravityZG) * GRAVITY_MS2;
+// ─────────────────────────────────────────────────────────────────────────────
+// captureTiltBaseline()
+// Stores the startup pitch/roll as the normal flat orientation for LED alerts.
+// ─────────────────────────────────────────────────────────────────────────────
+void captureTiltBaseline() {
+  float ax = imu.readFloatAccelX();
+  float ay = imu.readFloatAccelY();
+  float az = imu.readFloatAccelZ();
 
-  float accelMagnitudeG = sqrt(ax * ax + ay * ay + az * az);
-  float gyroMagnitudeDps = sqrt(gx * gx + gy * gy + gz * gz);
-  bool stationary = fabs(accelMagnitudeG - 1.0) < STATIONARY_ACCEL_TOLERANCE_G &&
-    gyroMagnitudeDps < STATIONARY_GYRO_THRESHOLD_DPS;
+  computeTiltAngles(ax, ay, az, baselinePitchDeg, baselineRollDeg);
+  tiltBaselineReady = true;
 
-  if (stationary) {
-    currentVelocityMps = 0.0;
-    linearAccelZMps2 = 0.0;
-  } else if (fabs(linearAccelZMps2) < VELOCITY_DEADBAND_MS2) {
-    linearAccelZMps2 = 0.0;
-    currentVelocityMps *= VELOCITY_DAMPING;
-    if (fabs(currentVelocityMps) < VELOCITY_ZERO_SNAP_MPS) {
-      currentVelocityMps = 0.0;
+  Serial.printf("Tilt baseline: pitch=%.2f roll=%.2f deg\n",
+    baselinePitchDeg, baselineRollDeg);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// updateLedAlert(ax, ay, az)
+// Drives GPIO10 as a tilt-only actuator relative to the startup flat baseline.
+// ─────────────────────────────────────────────────────────────────────────────
+void updateLedAlert(float ax, float ay, float az) {
+  if (!tiltBaselineReady) {
+    digitalWrite(LED_ALERT_PIN, LOW);
+    return;
+  }
+
+  float pitchDeg = 0.0f;
+  float rollDeg = 0.0f;
+  computeTiltAngles(ax, ay, az, pitchDeg, rollDeg);
+
+  float relativePitchDeg = pitchDeg - baselinePitchDeg;
+  float relativeRollDeg = rollDeg - baselineRollDeg;
+  float tiltDeg = sqrt(relativePitchDeg * relativePitchDeg +
+    relativeRollDeg * relativeRollDeg);
+
+  if (!ledAlertActive) {
+    if (tiltDeg >= LED_TILT_THRESHOLD_DEG) {
+      ledTiltAboveCount++;
+      if (ledTiltAboveCount >= LED_TILT_DEBOUNCE_SAMPLES) {
+        ledAlertActive = true;
+        ledTiltBelowCount = 0;
+      }
+    } else {
+      ledTiltAboveCount = 0;
     }
   } else {
-    currentVelocityMps += linearAccelZMps2 * dtS;
-  }
-
-  bool lowMovement = stationary || (
-    fabs(currentVelocityMps) < VELOCITY_ZERO_SNAP_MPS &&
-    fabs(linearAccelZMps2) < VELOCITY_DEADBAND_MS2
-  );
-
-  if (lowMovement) {
-    if (lastMovingMs == 0) {
-      lastMovingMs = nowMs;
+    if (tiltDeg < LED_TILT_CLEAR_THRESHOLD_DEG) {
+      ledTiltBelowCount++;
+      if (ledTiltBelowCount >= LED_TILT_DEBOUNCE_SAMPLES) {
+        ledAlertActive = false;
+        ledTiltAboveCount = 0;
+      }
+    } else {
+      ledTiltBelowCount = 0;
     }
-    if (nowMs - lastMovingMs >= SESSION_PEAK_RESET_IDLE_MS) {
-      sessionPeakVelocityMps = 0.0;
-      currentVelocityMps = 0.0;
-    }
-  } else {
-    lastMovingMs = nowMs;
   }
 
-  // Track peak velocity for this set.
-  if (currentVelocityMps > sessionPeakVelocityMps) {
-    sessionPeakVelocityMps = currentVelocityMps;
-  }
-
-  // Compute current tilt magnitude from pitch and roll.
-  float tiltDeg = sqrt(pitchDeg * pitchDeg + rollDeg * rollDeg);
-
-  // Evaluate alert conditions.
-  bool tiltAlert = tiltDeg >= LED_TILT_THRESHOLD_DEG;
-
-  bool velocityDropAlert = (sessionPeakVelocityMps > 0.3) &&
-    (currentVelocityMps < sessionPeakVelocityMps * (1.0 - LED_VELOCITY_DROP_PCT / 100.0));
-
-  bool stallAlert = currentVelocityMps < LED_MIN_VELOCITY_MPS &&
-    sessionPeakVelocityMps > 0.3;
-
-  ledAlertActive = tiltAlert || velocityDropAlert || stallAlert;
   digitalWrite(LED_ALERT_PIN, ledAlertActive ? HIGH : LOW);
 }
 
@@ -274,6 +256,7 @@ void setup() {
   // Calibrate the gyro before streaming begins.
   // The bar (and sensor) must be completely still during these ~2 seconds.
   calibrateGyro();
+  captureTiltBaseline();
 
   Serial.println("IMU ready!"); // signals to the Python parser that CSV stream is starting
 }
@@ -303,7 +286,7 @@ void loop() {
   // a REP summary line immediately after the CSV line above.
   detectRep(ax, ay, az);
 
-  updateLedAlert(ax, ay, az, gx, gy, gz);
+  updateLedAlert(ax, ay, az);
 
   // 20ms delay = 50Hz sample rate. This is 5x faster than the original 10Hz and
   // gives enough resolution to catch the sharp acceleration spike (~100–200ms)
