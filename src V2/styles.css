@@ -711,10 +711,13 @@ button { border: 0; font: inherit; }
 .demo-video {
   display: block;
   width: 100%;
-  max-height: 220px;
+  max-height: 260px;
+  object-fit: cover;
   border-radius: 6px;
   background: #172027;
-  margin: 6px 0 14px;
+  border: 1px solid rgba(var(--teal-rgb), 0.24);
+  box-shadow: 0 16px 40px rgba(4, 12, 9, 0.28), 0 0 24px rgba(var(--teal-rgb), 0.14);
+  margin: 8px 0 16px;
 }
 
 /* story */

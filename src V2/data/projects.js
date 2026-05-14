@@ -14,6 +14,7 @@ export const projects = [
       prototype: '/coach-nova/prototype.png',
       circuit: '/coach-nova/circuit.png',
       logo: '/coach-nova/logo.png',
+      demo: '/coach-nova/demo.mov',
     },
     loreChips: [
       {

@@ -1,5 +1,5 @@
-import { useRef } from 'react';
-import { Billboard, Sparkles, Text, useTexture } from '@react-three/drei';
+import { Suspense, useRef } from 'react';
+import { Billboard, Sparkles, Text, useTexture, useVideoTexture } from '@react-three/drei';
 import { CuboidCollider, RigidBody } from '@react-three/rapier';
 import { useFrame } from '@react-three/fiber';
 
@@ -185,12 +185,81 @@ function FloatingParticles({ isNearest, powered }) {
 }
 
 function ProjectHologram({ project, isNearest, powered }) {
+  const demo = project.assets?.demo;
   const image = project.assets?.prototype || project.assets?.circuit || project.assets?.logo;
+
+  if (demo) {
+    return (
+      <Suspense fallback={image ? <ImageHologram image={image} isNearest={isNearest} powered={powered} /> : null}>
+        <VideoHologram video={demo} isNearest={isNearest} powered={powered} />
+      </Suspense>
+    );
+  }
 
   return image ? (
     <ImageHologram image={image} isNearest={isNearest} powered={powered} />
   ) : (
     <GenericEngineeringHologram isNearest={isNearest} />
+  );
+}
+
+function VideoHologram({ video, isNearest, powered }) {
+  const group = useRef(null);
+  const texture = useVideoTexture(video, {
+    muted: true,
+    loop: true,
+    playsInline: true,
+    start: true,
+    crossOrigin: 'anonymous',
+  });
+  const glow = isNearest ? 1.28 : powered ? 0.92 : 0.56;
+  const opacity = isNearest ? 0.9 : powered ? 0.78 : 0.62;
+
+  useFrame((state) => {
+    if (!group.current) return;
+    const time = state.clock.elapsedTime;
+    group.current.position.y = 1.04 + Math.sin(time * 1.55) * 0.05;
+    group.current.rotation.y = Math.sin(time * 0.7) * 0.075;
+    group.current.scale.setScalar(1 + Math.sin(time * 2.15) * (isNearest ? 0.028 : 0.012));
+  });
+
+  return (
+    <group ref={group} position={[0, 1.04, -0.94]}>
+      <mesh position={[0, 0, 0.03]}>
+        <planeGeometry args={[1.34, 0.76]} />
+        <meshBasicMaterial map={texture} transparent opacity={opacity} toneMapped={false} depthWrite={false} />
+      </mesh>
+      <mesh position={[0, 0, 0]}>
+        <boxGeometry args={[1.52, 0.92, 0.025]} />
+        <meshStandardMaterial
+          color="#0f2a24"
+          emissive="#4ade80"
+          emissiveIntensity={glow * 0.32}
+          transparent
+          opacity={0.24}
+          roughness={0.42}
+          depthWrite={false}
+        />
+      </mesh>
+      <mesh position={[0, 0.52, 0.045]}>
+        <boxGeometry args={[1.62, 0.035, 0.035]} />
+        <meshStandardMaterial color="#86efac" emissive="#4ade80" emissiveIntensity={glow} transparent opacity={0.8} />
+      </mesh>
+      <mesh position={[0, -0.52, 0.045]}>
+        <boxGeometry args={[1.62, 0.035, 0.035]} />
+        <meshStandardMaterial color="#86efac" emissive="#4ade80" emissiveIntensity={glow} transparent opacity={0.8} />
+      </mesh>
+      {[-0.28, -0.14, 0, 0.14, 0.28].map((y, index) => (
+        <mesh key={y} position={[0, y, 0.06]}>
+          <boxGeometry args={[1.38 - index * 0.035, 0.01, 0.018]} />
+          <meshStandardMaterial color="#d7ffe4" emissive="#86efac" emissiveIntensity={glow * 0.72} transparent opacity={0.2} />
+        </mesh>
+      ))}
+      <mesh position={[0, -0.68, 0.02]} rotation={[-Math.PI / 2, 0, 0]}>
+        <torusGeometry args={[0.54, 0.012, 6, 56]} />
+        <meshStandardMaterial color="#86efac" emissive="#4ade80" emissiveIntensity={glow * 0.76} transparent opacity={0.62} />
+      </mesh>
+    </group>
   );
 }
 

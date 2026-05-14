@@ -6,3 +6,4 @@ dist
 .vite
 *.log
 *.mov
+!public/coach-nova/demo.mov
